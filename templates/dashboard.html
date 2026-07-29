@@ -77,6 +77,7 @@
     .pill-green{background:var(--green-bg);color:var(--green);border:1px solid var(--green-border)}
     .pill-red{background:var(--red-light);color:var(--red);border:1px solid var(--red-border)}
     .pill-gray{background:var(--gray-100);color:var(--text-hint);border:1px solid var(--border)}
+    .pill-orange{background:#2a1a10;color:#e07030;border:1px solid #4a3020}
     .tier-priority{background:var(--red-light);color:var(--red);border:1px solid var(--red-border)}
     .tier-standard{background:#e8f0fc;color:#2b5faa;border:1px solid #c0d0f0}
     .tier-economy{background:var(--green-bg);color:var(--green);border:1px solid var(--green-border)}
@@ -488,7 +489,7 @@ function showTab(tab){
   document.getElementById("section-topology").style.display=tab==="topology"?"":"none";
   document.getElementById("section-routing").style.display=tab==="routing"?"":"none";
   document.getElementById("section-settings").style.display=tab==="settings"?"":"none";
-  if(tab==="settings") loadUsers();
+  if(tab==="settings"){loadUsers();loadAdminKeys();}
   ["dashboard","topology","routing","settings"].forEach(function(t){
     var el=document.getElementById("tab-"+t);
     if(el) el.className="tab-btn"+(tab===t?" active":"");
@@ -1125,6 +1126,20 @@ document.addEventListener("keydown",function(e){if(e.key==="Escape")closeNodeMod
         </table>
       </div>
     </div>
+
+    <!-- Client API Keys (v2 hashed key store — class/weight/capability) -->
+    <div class="card" style="grid-column:1/-1">
+      <div class="card-header" style="display:flex;align-items:center;justify-content:space-between">
+        <span class="card-title">Client API Keys</span>
+        <button class="btn-sm" onclick="openCreateKeyModal()">+ Add Key</button>
+      </div>
+      <div style="padding:12px 14px">
+        <table class="key-table">
+          <thead><tr><th>Client</th><th>Allowed Classes</th><th>Priority</th><th>Model</th><th></th><th></th></tr></thead>
+          <tbody id="admin-keys-tbody"><tr><td colspan="6" style="color:var(--text-hint);padding:14px">Loading...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -1342,6 +1357,268 @@ function copyApiKey(){
 document.getElementById("apiKeyModal").addEventListener("click", function(e){
   if(e.target === this) closeApiKeyModal();
 });
+</script>
+
+<!-- Create API Key Modal (v2 hashed key store) -->
+<div id="create-key-modal-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:300;align-items:center;justify-content:center" onclick="if(event.target===this)closeCreateKeyModal()">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;width:440px;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,.3)">
+    <div style="background:var(--red);padding:14px 18px"><div style="color:#fff;font-weight:600;font-size:15px">Add Client API Key</div></div>
+    <div style="padding:18px">
+      <div class="field" style="margin-bottom:12px">
+        <label style="display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--text-hint);margin-bottom:5px">Client Name</label>
+        <input type="text" id="ck-client" placeholder="e.g. HireDesk" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--text);font-size:13px">
+      </div>
+      <div class="field" style="margin-bottom:6px">
+        <label style="display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--text-hint);margin-bottom:5px">Priority</label>
+        <select id="ck-weight" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--text);font-size:13px">
+          <option value="critical">Critical</option>
+          <option value="high">High</option>
+          <option value="normal" selected>Normal</option>
+          <option value="low">Low</option>
+        </select>
+      </div>
+      <div style="font-size:11px;color:var(--text-hint);line-height:1.6;margin-bottom:14px">
+        <span style="color:var(--red);font-weight:600">Critical</span> always served first, ahead of every other client &middot;
+        <span style="color:#c0682a;font-weight:600">High</span> served ahead of Normal and Low &middot;
+        <span style="font-weight:600">Normal</span> the default for most clients &middot;
+        <span style="color:var(--green);font-weight:600">Low</span> served last, only when nothing else is waiting
+      </div>
+      <div class="field" style="margin-bottom:14px">
+        <label style="display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--text-hint);margin-bottom:7px">Allowed Traffic Classes</label>
+        <label style="display:flex;align-items:flex-start;gap:8px;margin-bottom:8px;cursor:pointer">
+          <input type="checkbox" id="ck-class-interactive" style="margin-top:3px">
+          <span><span style="font-weight:600;font-size:13px">Interactive</span><br><span style="font-size:11px;color:var(--text-hint)">User is watching and waiting for an immediate response.</span></span>
+        </label>
+        <label style="display:flex;align-items:flex-start;gap:8px;margin-bottom:8px;cursor:pointer">
+          <input type="checkbox" id="ck-class-deadline" style="margin-top:3px">
+          <span><span style="font-weight:600;font-size:13px">Deadline</span><br><span style="font-size:11px;color:var(--text-hint)">User submits and waits a few minutes for results.</span></span>
+        </label>
+        <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer">
+          <input type="checkbox" id="ck-class-throughput" style="margin-top:3px">
+          <span><span style="font-weight:600;font-size:13px">Throughput</span><br><span style="font-size:11px;color:var(--text-hint)">Fire-and-forget background processing, no one's watching.</span></span>
+        </label>
+      </div>
+      <div class="field" style="margin-bottom:16px">
+        <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
+          <span class="toggle"><input type="checkbox" id="ck-capability"><span class="toggle-slider"></span></span>
+          <span style="font-size:13px">Use larger/higher-quality model</span>
+        </label>
+        <div style="font-size:11px;color:var(--text-hint);margin-top:4px;margin-left:46px">Slower, but higher quality output — leave off unless this client specifically needs it.</div>
+      </div>
+      <div id="ck-error" style="color:var(--red);font-size:12px;margin-bottom:10px;display:none"></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn-sm" style="background:var(--gray-100);color:var(--text)" onclick="closeCreateKeyModal()">Cancel</button>
+        <button class="btn-sm" onclick="submitCreateKey()">Create Key</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Edit API Key Modal (v2 hashed key store) -->
+<div id="edit-key-modal-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:300;align-items:center;justify-content:center" onclick="if(event.target===this)closeEditKeyModal()">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;width:440px;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,.3)">
+    <div style="background:var(--red);padding:14px 18px"><div style="color:#fff;font-weight:600;font-size:15px">Edit Client API Key</div></div>
+    <div style="padding:18px">
+      <div style="font-size:11px;color:var(--text-hint);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Client</div>
+      <div id="ek-client-label" style="font-weight:600;font-size:14px;margin-bottom:14px"></div>
+      <div class="field" style="margin-bottom:6px">
+        <label style="display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--text-hint);margin-bottom:5px">Priority</label>
+        <select id="ek-weight" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--text);font-size:13px">
+          <option value="critical">Critical</option>
+          <option value="high">High</option>
+          <option value="normal">Normal</option>
+          <option value="low">Low</option>
+        </select>
+      </div>
+      <div style="font-size:11px;color:var(--text-hint);line-height:1.6;margin-bottom:14px">
+        <span style="color:var(--red);font-weight:600">Critical</span> always served first, ahead of every other client &middot;
+        <span style="color:#c0682a;font-weight:600">High</span> served ahead of Normal and Low &middot;
+        <span style="font-weight:600">Normal</span> the default for most clients &middot;
+        <span style="color:var(--green);font-weight:600">Low</span> served last, only when nothing else is waiting
+      </div>
+      <div class="field" style="margin-bottom:14px">
+        <label style="display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--text-hint);margin-bottom:7px">Allowed Traffic Classes</label>
+        <label style="display:flex;align-items:flex-start;gap:8px;margin-bottom:8px;cursor:pointer">
+          <input type="checkbox" id="ek-class-interactive" style="margin-top:3px">
+          <span><span style="font-weight:600;font-size:13px">Interactive</span><br><span style="font-size:11px;color:var(--text-hint)">User is watching and waiting for an immediate response.</span></span>
+        </label>
+        <label style="display:flex;align-items:flex-start;gap:8px;margin-bottom:8px;cursor:pointer">
+          <input type="checkbox" id="ek-class-deadline" style="margin-top:3px">
+          <span><span style="font-weight:600;font-size:13px">Deadline</span><br><span style="font-size:11px;color:var(--text-hint)">User submits and waits a few minutes for results.</span></span>
+        </label>
+        <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer">
+          <input type="checkbox" id="ek-class-throughput" style="margin-top:3px">
+          <span><span style="font-weight:600;font-size:13px">Throughput</span><br><span style="font-size:11px;color:var(--text-hint)">Fire-and-forget background processing, no one's watching.</span></span>
+        </label>
+      </div>
+      <div class="field" style="margin-bottom:16px">
+        <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
+          <span class="toggle"><input type="checkbox" id="ek-capability"><span class="toggle-slider"></span></span>
+          <span style="font-size:13px">Use larger/higher-quality model</span>
+        </label>
+        <div style="font-size:11px;color:var(--text-hint);margin-top:4px;margin-left:46px">Slower, but higher quality output — leave off unless this client specifically needs it.</div>
+      </div>
+      <div id="ek-error" style="color:var(--red);font-size:12px;margin-bottom:10px;display:none"></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn-sm" style="background:var(--gray-100);color:var(--text)" onclick="closeEditKeyModal()">Cancel</button>
+        <button class="btn-sm" onclick="submitEditKey()">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- New Key Secret Modal (v2 hashed key store — shown once) -->
+<div id="key-secret-modal-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:300;align-items:center;justify-content:center">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;width:440px;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,.3)">
+    <div style="background:var(--red);padding:14px 18px"><div style="color:#fff;font-weight:600;font-size:15px">New API Key Created</div></div>
+    <div style="padding:18px">
+      <div style="font-size:11px;color:var(--text-hint);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Client</div>
+      <div id="key-secret-client" style="font-weight:600;font-size:14px;margin-bottom:14px"></div>
+      <div style="color:var(--red);font-size:12px;font-weight:600;margin-bottom:8px">This secret is shown once. Copy it now — it cannot be retrieved again.</div>
+      <div style="display:flex;gap:8px;margin-bottom:18px">
+        <input id="key-secret-value" type="text" readonly style="flex:1;font-family:'Courier New',monospace;font-size:12px;padding:8px 10px;border:1px solid var(--border);border-radius:4px;background:var(--gray-50);color:var(--text)">
+        <button class="btn-sm btn-red" id="key-secret-copy-btn" onclick="copyKeySecret()">Copy</button>
+      </div>
+      <div style="display:flex;justify-content:flex-end">
+        <button class="btn-sm" style="background:var(--gray-100);color:var(--text)" onclick="closeKeySecretModal()">Done</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// --- Client API Keys (v2 hashed key store) ---
+var _adminKeys = [];
+var _editingClient = null;
+
+function weightBadge(weight){
+  var map={"critical":["pill-red","Critical"],"high":["pill-orange","High"],"normal":["pill-gray","Normal"],"low":["pill-green","Low"]};
+  var w=map[weight]||["pill-gray",weight];
+  return '<span class="pill '+w[0]+'">'+w[1]+'</span>';
+}
+function classChips(classes){
+  return (classes||[]).map(function(c){return '<span class="pill pill-gray" style="margin-right:3px">'+c+'</span>';}).join("");
+}
+function capabilityLabel(cap){
+  return cap ? '<span class="model-pill">High</span>' : '<span style="color:var(--text-hint);font-size:12px">Standard</span>';
+}
+
+async function loadAdminKeys(){
+  var tbody=document.getElementById("admin-keys-tbody");
+  if(!tbody) return;
+  try{
+    var d=await fetch(API_PREFIX+"/admin/keys").then(function(r){return r.json();});
+    _adminKeys=d.keys;
+    if(!d.keys.length){tbody.innerHTML='<tr><td colspan="6" style="color:var(--text-hint);padding:14px">No client keys yet</td></tr>';return;}
+    tbody.innerHTML=d.keys.map(function(k){
+      return '<tr><td class="strong">'+k.client+'</td>'
+        +'<td>'+classChips(k.allowed_classes)+'</td>'
+        +'<td>'+weightBadge(k.weight)+'</td>'
+        +'<td>'+capabilityLabel(k.capability)+'</td>'
+        +'<td><button class="btn-sm" onclick="openEditKeyModal(\''+k.client+'\')">Edit</button></td>'
+        +'<td><button class="revoke-btn" onclick="revokeAdminKey(\''+k.client+'\')">Revoke</button></td></tr>';
+    }).join("");
+  }catch(e){tbody.innerHTML='<tr><td colspan="6" style="color:var(--red)">Failed to load keys</td></tr>';}
+}
+
+function openCreateKeyModal(){
+  document.getElementById("ck-client").value="";
+  document.getElementById("ck-weight").value="normal";
+  document.getElementById("ck-class-interactive").checked=false;
+  document.getElementById("ck-class-deadline").checked=false;
+  document.getElementById("ck-class-throughput").checked=false;
+  document.getElementById("ck-capability").checked=false;
+  document.getElementById("ck-error").style.display="none";
+  document.getElementById("create-key-modal-overlay").style.display="flex";
+}
+function closeCreateKeyModal(){document.getElementById("create-key-modal-overlay").style.display="none";}
+
+async function submitCreateKey(){
+  var client=document.getElementById("ck-client").value.trim();
+  var weight=document.getElementById("ck-weight").value;
+  var classes=[];
+  if(document.getElementById("ck-class-interactive").checked) classes.push("interactive");
+  if(document.getElementById("ck-class-deadline").checked) classes.push("deadline");
+  if(document.getElementById("ck-class-throughput").checked) classes.push("throughput");
+  var capability=document.getElementById("ck-capability").checked?"high":null;
+  var errEl=document.getElementById("ck-error");
+  errEl.style.display="none";
+  if(!client){errEl.textContent="Client name is required.";errEl.style.display="block";return;}
+  if(!classes.length){errEl.textContent="Select at least one allowed traffic class.";errEl.style.display="block";return;}
+  try{
+    var r=await fetch(API_PREFIX+"/admin/keys",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({client:client,allowed_classes:classes,weight:weight,capability:capability})});
+    var d=await r.json();
+    if(r.ok){
+      closeCreateKeyModal();
+      loadAdminKeys();
+      document.getElementById("key-secret-client").textContent=client;
+      document.getElementById("key-secret-value").value=d.secret;
+      document.getElementById("key-secret-copy-btn").textContent="Copy";
+      document.getElementById("key-secret-modal-overlay").style.display="flex";
+    }else{
+      errEl.textContent=d.detail||"Failed to create key.";errEl.style.display="block";
+    }
+  }catch(e){errEl.textContent="Request failed.";errEl.style.display="block";}
+}
+
+function closeKeySecretModal(){document.getElementById("key-secret-modal-overlay").style.display="none";}
+function copyKeySecret(){
+  var input=document.getElementById("key-secret-value");
+  input.select();input.setSelectionRange(0,99999);
+  var btn=document.getElementById("key-secret-copy-btn");
+  navigator.clipboard.writeText(input.value).then(function(){
+    btn.textContent="Copied!";setTimeout(function(){btn.textContent="Copy";},2000);
+  }).catch(function(){
+    document.execCommand("copy");
+    btn.textContent="Copied!";setTimeout(function(){btn.textContent="Copy";},2000);
+  });
+}
+
+function openEditKeyModal(client){
+  var k=_adminKeys.find(function(x){return x.client===client;});
+  if(!k) return;
+  _editingClient=client;
+  document.getElementById("ek-client-label").textContent=client;
+  document.getElementById("ek-weight").value=k.weight;
+  var classes=k.allowed_classes||[];
+  document.getElementById("ek-class-interactive").checked=classes.indexOf("interactive")>=0;
+  document.getElementById("ek-class-deadline").checked=classes.indexOf("deadline")>=0;
+  document.getElementById("ek-class-throughput").checked=classes.indexOf("throughput")>=0;
+  document.getElementById("ek-capability").checked=!!k.capability;
+  document.getElementById("ek-error").style.display="none";
+  document.getElementById("edit-key-modal-overlay").style.display="flex";
+}
+function closeEditKeyModal(){document.getElementById("edit-key-modal-overlay").style.display="none";_editingClient=null;}
+
+async function submitEditKey(){
+  if(!_editingClient) return;
+  var weight=document.getElementById("ek-weight").value;
+  var classes=[];
+  if(document.getElementById("ek-class-interactive").checked) classes.push("interactive");
+  if(document.getElementById("ek-class-deadline").checked) classes.push("deadline");
+  if(document.getElementById("ek-class-throughput").checked) classes.push("throughput");
+  var capability=document.getElementById("ek-capability").checked?"high":null;
+  var errEl=document.getElementById("ek-error");
+  errEl.style.display="none";
+  if(!classes.length){errEl.textContent="Select at least one allowed traffic class.";errEl.style.display="block";return;}
+  try{
+    var r=await fetch(API_PREFIX+"/admin/keys/"+encodeURIComponent(_editingClient),{method:"PATCH",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({allowed_classes:classes,weight:weight,capability:capability})});
+    var d=await r.json();
+    if(r.ok){closeEditKeyModal();loadAdminKeys();showToast("Key updated for "+_editingClient);}
+    else{errEl.textContent=d.detail||"Failed to update key.";errEl.style.display="block";}
+  }catch(e){errEl.textContent="Request failed.";errEl.style.display="block";}
+}
+
+async function revokeAdminKey(client){
+  if(!confirm("Revoke API key for "+client+"? This cannot be undone — "+client+" will need a new key issued.")) return;
+  try{
+    var r=await fetch(API_PREFIX+"/admin/keys/"+encodeURIComponent(client),{method:"DELETE"});
+    if(r.ok){showToast("Key revoked for "+client);loadAdminKeys();}
+    else{var d=await r.json();showToast(d.detail||"Failed to revoke key.",true);}
+  }catch(e){showToast("Request failed.",true);}
+}
 </script>
 
 </body>
