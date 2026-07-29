@@ -64,7 +64,7 @@ EDITS = [
     ),
     (
         STARTUP_INIT_GWAUTH,
-        STARTUP_INIT_GWAUTH + STARTUP_INIT_ADMIN_KEYS,
+        STARTUP_INIT_ADMIN_KEYS,
         "admin_keys_api.init(KEY_STORE",
         "after",
     ),
