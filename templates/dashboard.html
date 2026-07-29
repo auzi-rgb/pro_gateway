@@ -1,0 +1,1348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>AI Gateway Dashboard</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    :root{
+      --red:#B5282A;--red-dark:#8a1e1f;--red-light:#f5e8e8;--red-border:#e8c8c8;
+      --gray-50:#f7f7f5;--gray-100:#f0efec;--gray-200:#e2e1dc;--gray-300:#cccbc4;
+      --gray-500:#888780;--gray-700:#4a4946;--gray-900:#1a1a18;
+      --green:#2a7a2a;--green-bg:#eef7ee;--green-border:#b5d9b5;
+      --text:#1a1a18;--text-muted:#666;--text-hint:#999;
+      --border:#e0dfd8;--surface:#fff;--page:#f4f3f0;
+    }
+    @media(prefers-color-scheme:dark){
+      :root{
+        --page:#111110;--surface:#1c1c1a;--border:#2e2e2b;
+        --text:#e8e7e2;--text-muted:#a0a09a;--text-hint:#666;
+        --gray-50:#1c1c1a;--gray-100:#242422;--gray-200:#2e2e2b;
+        --green-bg:#0f2a0f;--green-border:#1a4a1a;
+        --red-light:#2a1010;--red-border:#4a2020;
+      }
+    }
+    body{font-family:"Segoe UI",system-ui,sans-serif;background:var(--page);color:var(--text);min-height:100vh;font-size:14px}
+    .header{background:var(--surface);border-bottom:3px solid var(--red);height:56px;display:flex;align-items:center;justify-content:space-between;padding:0 24px;position:sticky;top:0;z-index:100}
+    .header-left{display:flex;align-items:center;gap:14px}
+    .logo-g{font-size:30px;color:var(--red);font-family:Georgia,serif;font-style:italic;font-weight:700;line-height:1;width:36px;text-align:center}
+    .header-divider{width:1px;height:32px;background:var(--border)}
+    .header-sup{font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:var(--text-hint)}
+    .header-title{font-size:15px;font-weight:600;color:var(--text);letter-spacing:-.01em}
+    .header-right{display:flex;align-items:center;gap:16px}
+    .status-pill{display:flex;align-items:center;gap:5px;background:var(--green-bg);border:1px solid var(--green-border);border-radius:20px;padding:3px 10px;font-size:12px;font-weight:600;color:var(--green)}
+    .status-pill.offline{background:#2a1010;border-color:#4a2020;color:#e05050}
+    .status-dot{width:7px;height:7px;border-radius:50%;background:var(--green)}
+    .status-pill.offline .status-dot{background:#e05050}
+    #last-updated{font-size:12px;color:var(--text-hint)}
+    #clock{font-size:13px;color:var(--text-muted);font-variant-numeric:tabular-nums}
+    .stat-bar{display:grid;grid-template-columns:repeat(4,1fr);background:var(--surface);border-bottom:1px solid var(--border)}
+    .stat-cell{padding:14px 20px;border-right:1px solid var(--border)}
+    .stat-cell:last-child{border-right:none}
+    .stat-label{font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:var(--text-hint);margin-bottom:4px}
+    .stat-value{font-size:26px;font-weight:700;line-height:1;color:var(--text)}
+    .stat-value.green{color:var(--green)}
+    .tab-bar{background:var(--surface);border-bottom:1px solid var(--border);padding:0 20px;display:flex}
+    .tab-btn{background:none;border:none;border-bottom:2px solid transparent;color:var(--text-hint);font-size:13px;font-weight:500;padding:10px 16px;cursor:pointer;margin-bottom:-1px}
+    .tab-btn.active{color:var(--red);border-bottom-color:var(--red)}
+    .body{padding:16px 20px;display:grid;grid-template-columns:1fr 1fr;gap:16px}
+    .full-width{grid-column:1/-1}
+    .card{background:var(--surface);border:1px solid var(--border);border-radius:6px;overflow:hidden}
+    .card-header{padding:10px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+    .card-title{font-size:10px;letter-spacing:.08em;text-transform:uppercase;font-weight:700;color:var(--text-muted)}
+    .card-body{padding:14px}
+    .card-body-flush{padding:0}
+    .btn{padding:5px 12px;border-radius:4px;border:1px solid var(--border);font-size:12px;font-weight:500;cursor:pointer;background:var(--surface);color:var(--text)}
+    .btn:hover{background:var(--gray-100)}
+    .btn-red{background:var(--red);color:#fff;border-color:var(--red)}
+    .btn-red:hover{background:var(--red-dark)}
+    .btn-sm{font-size:11px;padding:3px 10px}
+    input[type=text],input[type=email],input[type=password],select{background:var(--gray-50);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:6px 10px;font-size:13px}
+    input[type=text]:focus,input[type=email]:focus,input[type=password]:focus,select:focus{outline:2px solid var(--red);border-color:var(--red)}
+    .toggle{position:relative;width:36px;height:20px;display:inline-block;flex-shrink:0}
+    .toggle input{opacity:0;width:0;height:0}
+    .toggle-slider{position:absolute;cursor:pointer;inset:0;background:var(--gray-300);border-radius:10px;transition:.2s}
+    .toggle-slider:before{content:"";position:absolute;width:14px;height:14px;left:3px;bottom:3px;background:#fff;border-radius:50%;transition:.2s}
+    .toggle input:checked+.toggle-slider{background:var(--red)}
+    .toggle input:checked+.toggle-slider:before{transform:translateX(16px)}
+    table{width:100%;border-collapse:collapse;font-size:13px}
+    th{text-align:left;font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--text-hint);padding:7px 10px;border-bottom:1px solid var(--border);font-weight:600}
+    td{padding:7px 10px;border-bottom:1px solid var(--gray-100);color:var(--text-muted);vertical-align:middle}
+    tr:last-child td{border-bottom:none}
+    td.strong{color:var(--text);font-weight:600}
+    td.red-link{color:var(--red);font-weight:600}
+    td.mono{font-family:'Courier New',monospace;font-size:11px;color:var(--text-hint)}
+    .pill{font-size:10px;font-weight:700;padding:2px 8px;border-radius:3px;display:inline-block}
+    .pill-green{background:var(--green-bg);color:var(--green);border:1px solid var(--green-border)}
+    .pill-red{background:var(--red-light);color:var(--red);border:1px solid var(--red-border)}
+    .pill-gray{background:var(--gray-100);color:var(--text-hint);border:1px solid var(--border)}
+    .tier-priority{background:var(--red-light);color:var(--red);border:1px solid var(--red-border)}
+    .tier-standard{background:#e8f0fc;color:#2b5faa;border:1px solid #c0d0f0}
+    .tier-economy{background:var(--green-bg);color:var(--green);border:1px solid var(--green-border)}
+    .status-ok{background:var(--green-bg);color:var(--green);font-size:10px;font-weight:700;padding:2px 6px;border-radius:3px}
+    .status-err{background:var(--red-light);color:var(--red);font-size:10px;font-weight:700;padding:2px 6px;border-radius:3px}
+    .time-filter{display:flex;gap:4px}
+    .tf-btn{font-size:11px;padding:2px 8px;border:1px solid var(--border);border-radius:3px;cursor:pointer;background:var(--surface);color:var(--text-muted)}
+    .tf-btn.active{background:var(--red);color:#fff;border-color:var(--red)}
+    .node-row{display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid var(--gray-100)}
+    .node-row:last-child{border-bottom:none}
+    .node-dot{width:8px;height:8px;border-radius:50%;background:var(--green);margin-top:5px;flex-shrink:0}
+    .node-dot.down{background:#e05050}
+    .node-dot.disabled{background:var(--gray-300)}
+    .node-name{font-size:13px;font-weight:600;color:var(--text)}
+    .node-meta{font-size:11px;color:var(--text-hint);margin-top:2px}
+    .node-accent{width:28px;height:2px;background:var(--red);margin-top:5px;border-radius:1px}
+    .cap-bar-wrap{background:var(--gray-100);border-radius:999px;height:5px;overflow:hidden;margin-top:6px}
+    .cap-bar{height:100%;border-radius:999px;background:var(--red);transition:width .4s}
+    .model-chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:8px}
+    .model-chip{font-size:10px;background:var(--gray-100);color:var(--text-muted);padding:2px 8px;border-radius:3px}
+    .model-chip.default{background:var(--red-light);color:var(--red);font-weight:600}
+    .usage-row{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--gray-100)}
+    .usage-row:last-child{border-bottom:none}
+    .usage-name{width:130px;font-size:12px;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .usage-name.highlight{color:var(--red);font-weight:600}
+    .usage-bar-wrap{flex:1;height:6px;background:var(--gray-100);border-radius:3px;overflow:hidden}
+    .usage-bar{height:100%;background:var(--red);border-radius:3px}
+    .usage-bar.dim{background:var(--gray-300)}
+    .usage-nums{font-size:11px;color:var(--text-hint);width:70px;text-align:right;white-space:nowrap}
+    .config-row{display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--gray-100);font-size:13px}
+    .config-row:last-child{border-bottom:none}
+    .config-label{color:var(--text-muted)}
+    .model-pill{background:var(--red-light);color:var(--red);border:1px solid var(--red-border);border-radius:4px;padding:2px 8px;font-size:12px;font-weight:600}
+    .change-link{font-size:11px;color:var(--red);cursor:pointer;text-decoration:underline;background:none;border:none}
+    .enforced-label{font-size:12px;font-weight:600}
+    .enforced-label.on{color:var(--green)}
+    .enforced-label.off{color:var(--text-hint)}
+    .key-table{width:100%;border-collapse:collapse;font-size:12px;margin-top:10px}
+    .key-table th{text-align:left;font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--text-hint);padding:4px 6px;border-bottom:1px solid var(--border);font-weight:600}
+    .key-table td{padding:6px 6px;border-bottom:1px solid var(--gray-100);vertical-align:middle}
+    .key-table tr:last-child td{border-bottom:none}
+    .key-val{font-family:'Courier New',monospace;color:var(--text-hint);font-size:11px}
+    .tier-select{font-size:11px;padding:2px 6px;border-radius:3px;border:1px solid var(--border);background:var(--surface);color:var(--text)}
+    .revoke-btn{font-size:11px;padding:2px 8px;border:1px solid var(--red-border);border-radius:3px;background:none;color:var(--red);cursor:pointer}
+    .revoke-btn:hover{background:var(--red-light)}
+    .add-key-row{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+    .alert-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}
+    .field-label{font-size:11px;color:var(--text-hint);margin-bottom:3px}
+    .toast{position:fixed;bottom:20px;right:20px;background:var(--green);color:#fff;padding:8px 16px;border-radius:6px;font-size:12px;font-weight:600;opacity:0;transition:opacity .3s;pointer-events:none;z-index:999}
+    .toast.show{opacity:1}
+    .toast.error{background:var(--red)}
+    .info-panel{display:none;margin-top:12px;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:14px}
+    .info-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+    .info-title{font-size:14px;font-weight:600;color:var(--text)}
+    .info-close{background:none;border:none;color:var(--text-hint);cursor:pointer;font-size:1.2rem}
+    .info-row{display:flex;gap:10px;padding:5px 0;border-bottom:1px solid var(--gray-100)}
+    .info-row:last-child{border-bottom:none}
+    .info-key{color:var(--text-hint);min-width:130px;font-size:12px}
+    .info-val{color:var(--text);font-size:12px}
+    .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;align-items:center;justify-content:center}
+    .modal{background:var(--surface);border:1px solid var(--border);border-radius:8px;width:min(780px,95vw);max-height:85vh;overflow-y:auto;padding:24px;position:relative}
+    .modal-close{position:absolute;top:14px;right:14px;background:none;border:none;color:var(--text-hint);font-size:1.3rem;cursor:pointer}
+    #topology-svg{background:var(--gray-50);display:block}
+    .topo-legend{margin-top:10px;display:flex;gap:20px;font-size:12px;color:var(--text-hint);flex-wrap:wrap}
+    .section-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text-hint);margin-bottom:10px}
+    .route-algo-card{display:flex;gap:16px;flex-wrap:wrap}
+    .route-algo-label{font-size:10px;color:var(--text-hint);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px}
+    .route-algo-val{font-size:14px;font-weight:700;color:var(--red)}
+    .rules-col{flex:1;min-width:260px}
+    .rules-divider{width:1px;background:var(--border)}
+    .rule-row{display:flex;align-items:center;gap:6px;margin-bottom:5px;font-size:12px}
+    .rule-arrow{color:var(--text-hint)}
+    .rule-node{color:var(--red);font-weight:600}
+    .rule-clear{background:none;border:none;color:var(--text-hint);cursor:pointer;font-size:13px;padding:0 3px}
+    .add-rule-row{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+    .add-rule-row select{flex:1;min-width:100px;font-size:12px;padding:4px 6px}
+    .modal-stat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px}
+    .modal-stat{background:var(--gray-50);border-radius:6px;padding:12px;text-align:center}
+    .modal-stat-val{font-size:22px;font-weight:700;line-height:1}
+    .modal-stat-lbl{font-size:10px;color:var(--text-hint);text-transform:uppercase;letter-spacing:.06em;margin-top:4px}
+    .modal-stat-sub{font-size:11px;color:var(--text-hint);margin-top:2px}
+    .loaded-model-card{background:var(--gray-50);border-radius:5px;padding:10px 14px;margin-bottom:6px}
+    .loaded-model-name{font-size:13px;font-weight:600;color:var(--red);margin-bottom:4px}
+    .loaded-model-meta{font-size:11px;color:var(--text-hint)}
+    .hist-table td,.hist-table th{padding:6px 8px;font-size:12px}
+    #alert-banner{align-items:center}
+  
+/* Account menu styles */
+.account-menu{position:relative}
+.account-btn{background:none;border:1px solid var(--border);border-radius:6px;padding:5px 10px;cursor:pointer;display:flex;align-items:center;gap:6px;color:var(--text);font-size:13px;font-weight:500}
+.account-btn:hover{background:var(--gray-100)}
+.account-icon{width:22px;height:22px;background:var(--red);border-radius:50%;display:inline-flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:700}
+.account-dropdown{display:none;position:absolute;right:0;top:calc(100% + 6px);background:var(--surface);border:1px solid var(--border);border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.15);width:220px;padding:10px;z-index:200}
+.account-dropdown.open{display:block}
+.account-email{font-size:12px;color:var(--text-muted);padding:2px 4px;word-break:break-all}
+.account-role-badge{display:inline-block;margin-top:4px;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;background:var(--gray-100);color:var(--text-muted)}
+.account-drop-btn{width:100%;text-align:left;background:none;border:none;padding:7px 8px;border-radius:4px;cursor:pointer;font-size:13px;color:var(--text);display:block;margin-top:2px}
+.account-drop-btn:hover{background:var(--gray-100)}
+.account-drop-btn.danger{color:var(--red)}
+.account-drop-btn.danger:hover{background:#2a1010}
+/* Settings tab styles */
+.user-table{width:100%;border-collapse:collapse;font-size:13px}
+.user-table th{text-align:left;font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--text-hint);padding:6px 8px;border-bottom:1px solid var(--border);font-weight:600}
+.user-table td{padding:8px 8px;border-bottom:1px solid var(--gray-100);vertical-align:middle}
+.user-table tr:last-child td{border-bottom:none}
+.role-badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600}
+.role-badge.admin{background:#2a1a10;color:#e07030}
+.role-badge.viewer{background:var(--gray-100);color:var(--text-muted)}
+</style>
+</head>
+<body>
+
+<header class="header">
+  <div class="header-left">
+    <img src="/gateway/static/cog.jpg" alt="City of Georgetown" style="height:40px;width:auto">
+    <div class="header-divider"></div>
+    <div>
+      <div class="header-sup">City of Georgetown, Texas &middot; Information Technology</div>
+      <div class="header-title">AI Gateway Dashboard</div>
+    </div>
+  </div>
+  <div class="header-right">
+    <div id="status-badge" class="status-pill"><span class="status-dot"></span><span id="status-text">Online</span></div>
+    <div id="last-updated"></div>
+    <div id="clock"></div>
+    <div class="account-menu" id="account-menu">
+      <button class="account-btn" onclick="toggleAccountMenu()" id="account-btn">
+        <span class="account-icon">&#9679;</span>
+        <span id="account-name">...</span>
+        <span style="font-size:10px;opacity:.6">&#9660;</span>
+      </button>
+      <div class="account-dropdown" id="account-dropdown">
+        <div class="account-email" id="account-email"></div>
+        <div class="account-role-badge" id="account-role-badge"></div>
+        <hr style="border:none;border-top:1px solid var(--border);margin:8px 0">
+        <button class="account-drop-btn" onclick="openChangePassword()">Change Password</button>
+        <button class="account-drop-btn danger" onclick="location.href='/gateway/logout'">Sign Out</button>
+      </div>
+    </div>
+  </div>
+</header>
+
+<div class="stat-bar">
+  <div class="stat-cell"><div class="stat-label">Healthy Nodes</div><div class="stat-value green" id="ov-nodes">&#8212;</div></div>
+  <div class="stat-cell"><div class="stat-label">Active Requests</div><div class="stat-value" id="ov-active">&#8212;</div></div>
+  <div class="stat-cell"><div class="stat-label">Default Model</div><div class="stat-value" id="ov-model" style="font-size:15px;padding-top:5px">&#8212;</div></div>
+  <div class="stat-cell"><div class="stat-label">Requests (24h)</div><div class="stat-value" id="ov-24h">&#8212;</div></div>
+</div>
+
+<div class="tab-bar">
+  <button class="tab-btn active" id="tab-dashboard" onclick="showTab('dashboard')">Dashboard</button>
+  <button class="tab-btn" id="tab-topology" onclick="showTab('topology')">Network Topology</button>
+  <button class="tab-btn" id="tab-routing" onclick="showTab('routing')">Routing</button>
+  <button class="tab-btn admin-only" id="tab-settings" onclick="showTab('settings')" style="display:none">Settings</button>
+</div>
+
+<div id="alert-banner" style="display:none;background:#2a1010;border:1px solid #4a2020;border-radius:6px;padding:10px 14px;margin:12px 20px 0;align-items:center;gap:10px">
+  <span style="font-size:1.1rem;color:#e05050">&#9888;</span>
+  <div id="alert-banner-text" style="color:#e09090;font-weight:600;flex:1"></div>
+  <button onclick="document.getElementById('alert-banner').style.display='none'" style="background:none;border:none;color:var(--text-hint);cursor:pointer;font-size:1.1rem">&#215;</button>
+</div>
+
+<div id="section-dashboard">
+<div class="body">
+
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">Nodes</span>
+      <button class="btn btn-sm" onclick="showTab('topology')">view topology</button>
+    </div>
+    <div class="card-body" id="nodes-grid"><div style="color:var(--text-hint)">Loading...</div></div>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><span class="card-title">Model Usage (24h)</span></div>
+    <div class="card-body" id="model-usage-chart"><div style="color:var(--text-hint)">Loading...</div></div>
+  </div>
+
+  <div class="card full-width">
+    <div class="card-header"><span class="card-title">Configuration</span></div>
+    <div class="card-body">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px">
+        <div>
+          <div class="config-row">
+            <span class="config-label">Default model</span>
+            <div style="display:flex;align-items:center;gap:8px">
+              <span class="model-pill" id="default-model-pill">&#8212;</span>
+              <button class="change-link" onclick="var r=document.getElementById('model-change-row');r.style.display=r.style.display==='none'?'flex':'none'">change</button>
+            </div>
+          </div>
+          <div id="model-change-row" style="display:none;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--gray-100)">
+            <select id="model-select" style="flex:1"></select>
+            <button class="btn btn-red btn-sm" onclick="saveDefaultModel()">Save</button>
+          </div>
+          <div class="config-row">
+            <span class="config-label">API key enforcement</span>
+            <div style="display:flex;align-items:center;gap:8px">
+              <label class="toggle"><input type="checkbox" id="require-key-toggle" onchange="toggleRequireKey(this.checked)"><span class="toggle-slider"></span></label>
+              <span id="require-key-label" class="enforced-label">Loading...</span>
+            </div>
+          </div>
+        </div>
+        <div>
+          <div style="font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--text-hint);margin-bottom:8px">Generate New Key</div>
+          <div class="add-key-row">
+            <input id="new-key-name" type="text" placeholder="Client name" style="flex:2;width:auto">
+            <select id="new-key-tier" style="flex:1;width:auto">
+              <option value="1">T1 &mdash; Priority</option>
+              <option value="2" selected>T2 &mdash; Standard</option>
+              <option value="3">T3 &mdash; Economy</option>
+            </select>
+            <button class="btn btn-red btn-sm" onclick="addApiKey()">Generate</button>
+          </div>
+          <div style="margin-top:8px;font-size:11px;color:var(--text-hint);line-height:1.5">
+            <span style="color:var(--red);font-weight:600">T1</span> GB10 only, 60s &nbsp;|&nbsp;
+            <span style="color:#2b5faa;font-weight:600">T2</span> GB10 &rarr; node-01 &nbsp;|&nbsp;
+            <span style="color:var(--green);font-weight:600">T3</span> node-01 &rarr; GB10
+          </div>
+        </div>
+      </div>
+      <div style="border-top:1px solid var(--border);margin-top:14px;padding-top:14px">
+        <div id="api-keys-list">Loading...</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">Client Usage</span>
+      <div class="time-filter">
+        <button class="tf-btn active" id="btn-all" onclick="setWindow('all')">All time</button>
+        <button class="tf-btn" id="btn-24h" onclick="setWindow('24h')">24h</button>
+        <button class="tf-btn" id="btn-7d" onclick="setWindow('7d')">7d</button>
+      </div>
+    </div>
+    <div class="card-body-flush">
+      <table><thead><tr><th>Client</th><th>Requests</th><th>Failed</th><th>Avg</th><th>Last Seen</th></tr></thead>
+      <tbody id="stats-tbody"><tr><td colspan="5" style="color:var(--text-hint);padding:14px">Loading...</td></tr></tbody></table>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><span class="card-title">All Models</span></div>
+    <div class="card-body-flush">
+      <table><thead><tr><th>Model</th><th>Available On</th></tr></thead>
+      <tbody id="models-tbody"><tr><td colspan="2" style="color:var(--text-hint);padding:14px">Loading...</td></tr></tbody></table>
+    </div>
+  </div>
+
+  <div class="card full-width">
+    <div class="card-header"><span class="card-title">Email Alerts (M365)</span></div>
+    <div class="card-body">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+        <label class="toggle"><input type="checkbox" id="alert-enabled-toggle" onchange="saveAlertConfig()"><span class="toggle-slider"></span></label>
+        <span id="alert-enabled-label" class="enforced-label">Loading...</span>
+      </div>
+      <div class="alert-form-grid">
+        <div><div class="field-label">Alert Email Address</div><input id="alert-email" type="email" placeholder="you@georgetowntexas.gov" style="width:100%"></div>
+        <div><div class="field-label">From Address (M365 login)</div><input id="alert-smtp-user" type="email" placeholder="sender@georgetowntexas.gov" style="width:100%"></div>
+        <div><div class="field-label">M365 App Password</div><input id="alert-smtp-password" type="password" placeholder="App password" style="width:100%"></div>
+        <div><div class="field-label">Alert After Failed Checks</div>
+          <select id="alert-threshold" style="width:100%">
+            <option value="1">1 failed check (~30s)</option>
+            <option value="2" selected>2 failed checks (~60s)</option>
+            <option value="3">3 failed checks (~90s)</option>
+          </select>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button class="btn btn-red btn-sm" onclick="saveAlertConfig()">Save Config</button>
+        <button class="btn btn-sm" onclick="testAlert()">Send Test Email</button>
+        <span id="alert-config-msg" style="font-size:12px;color:var(--text-hint)"></span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card full-width">
+    <div class="card-header">
+      <span class="card-title">Recent Requests</span>
+      <span id="log-showing" style="font-size:11px;color:var(--text-hint);background:var(--gray-100);border:1px solid var(--border);border-radius:3px;padding:2px 8px"></span>
+    </div>
+    <div class="card-body-flush">
+      <table><thead><tr><th>Time</th><th>Client</th><th>Model</th><th>Node</th><th>Wait</th><th>Duration</th><th>Status</th></tr></thead>
+      <tbody id="logs-tbody"><tr><td colspan="7" style="color:var(--text-hint);padding:14px">Loading...</td></tr></tbody></table>
+    </div>
+  </div>
+
+</div>
+</div>
+
+<div id="section-topology" style="display:none">
+<div style="display:flex;height:calc(100vh - 160px);gap:0">
+  <div style="flex:1;position:relative;background:var(--gray-50);border:1px solid var(--border);border-radius:6px;margin:12px 0 12px 20px;overflow:hidden">
+    <svg id="topology-svg" style="position:absolute;top:0;left:0;width:100%;height:100%"></svg>
+  </div>
+  <div style="width:320px;flex-shrink:0;display:flex;flex-direction:column;gap:0;padding:12px 20px 12px 12px">
+    <div class="card" style="margin-bottom:10px;flex-shrink:0">
+      <div class="card-header"><span class="card-title">AI Nodes</span></div>
+      <div id="topo-node-cards"></div>
+    </div>
+    <div class="card" style="flex:1;overflow:hidden;display:flex;flex-direction:column;min-height:0">
+      <div class="card-header"><span class="card-title">Recent Connections</span></div>
+      <div id="topo-recent-feed" style="flex:1;overflow-y:auto"></div>
+    </div>
+  </div>
+  <div id="info-panel" class="info-panel" style="margin:0 20px 0 20px">
+    <div class="info-header">
+      <div class="info-title" id="info-title"></div>
+      <button class="info-close" onclick="hideInfo()">&#215;</button>
+    </div>
+    <div id="info-body"></div>
+  </div>
+</div>
+<div class="topo-legend" style="padding:8px 20px">
+  <span>&#9679; <span style="color:var(--green)">AI Node (Healthy)</span></span>
+  <span>&#9679; <span style="color:#e05050">AI Node (Down)</span></span>
+  <span>&#9679; <span style="color:#2b5faa">Client</span></span>
+  <span>&#9679; <span style="color:var(--red)">Gateway</span></span>
+  <span style="margin-left:auto">Click nodes to inspect &mdash; updates every 10s</span>
+</div>
+</div>
+<div id="section-routing" style="display:none">
+<div class="body">
+  <div class="card full-width">
+    <div class="card-header"><span class="card-title">Routing Algorithm</span></div>
+    <div class="card-body">
+      <div class="route-algo-card">
+        <div style="min-width:160px"><div class="route-algo-label">Current Algorithm</div><div class="route-algo-val" id="route-algo">&#8212;</div></div>
+        <div style="flex:2"><div class="route-algo-label">How It Works</div><div id="route-algo-desc" style="font-size:13px;color:var(--text-muted);line-height:1.6">&#8212;</div></div>
+      </div>
+    </div>
+  </div>
+  <div class="card full-width">
+    <div class="card-header"><span class="card-title">Routing Rules</span></div>
+    <div class="card-body">
+      <div style="display:flex;gap:24px;flex-wrap:wrap">
+        <div class="rules-col">
+          <div style="font-size:10px;color:var(--text-hint);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">Model Rules</div>
+          <div id="model-rules-list" style="margin-bottom:10px">Loading...</div>
+          <div class="add-rule-row">
+            <select id="rule-model-select"><option value="">Select model...</option></select>
+            <select id="rule-model-node"><option value="">Select node...</option></select>
+            <button class="btn btn-red btn-sm" onclick="addModelRule()">Add</button>
+          </div>
+        </div>
+        <div class="rules-divider"></div>
+        <div class="rules-col">
+          <div style="font-size:10px;color:var(--text-hint);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">Client Rules</div>
+          <div id="client-rules-list" style="margin-bottom:10px">Loading...</div>
+          <div class="add-rule-row">
+            <select id="rule-client-select"><option value="">Select client...</option></select>
+            <select id="rule-client-node"><option value="">Select node...</option></select>
+            <button class="btn btn-red btn-sm" onclick="addClientRule()">Add</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="card full-width">
+    <div class="card-header"><span class="card-title">Node Load</span></div>
+    <div class="card-body"><div style="display:grid;grid-template-columns:1fr 1fr;gap:16px" id="route-nodes"><div style="color:var(--text-hint)">Loading...</div></div></div>
+  </div>
+  <div class="card full-width">
+    <div class="card-header"><span class="card-title">Model Routing &mdash; Where Would Each Model Go Right Now?</span></div>
+    <div class="card-body-flush">
+      <table><thead><tr><th>Model</th><th>Node</th><th>Load</th><th>Active</th><th>Max</th><th>Selected</th></tr></thead>
+      <tbody id="route-models-tbody"><tr><td colspan="6" style="color:var(--text-hint);padding:14px">Loading...</td></tr></tbody></table>
+    </div>
+  </div>
+  <div class="card full-width">
+    <div class="card-header"><span class="card-title">Recent Client Routing History</span></div>
+    <div class="card-body-flush">
+      <table><thead><tr><th>Client</th><th>Tier</th><th>IP</th><th>Last Model</th><th>Last Path</th><th>Last Seen</th></tr></thead>
+      <tbody id="route-clients-tbody"><tr><td colspan="6" style="color:var(--text-hint);padding:14px">Loading...</td></tr></tbody></table>
+    </div>
+  </div>
+</div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<div class="modal-overlay" id="node-modal-overlay" onclick="closeNodeModal()">
+  <div class="modal" onclick="event.stopPropagation()">
+    <button class="modal-close" onclick="closeNodeModal()">&#215;</button>
+    <div id="node-modal-content">Loading...</div>
+  </div>
+</div>
+
+<script>
+var API_PREFIX = window.location.pathname.startsWith("/gateway") ? "/gateway" : "";
+var defaultModel = "";
+var allModels = [];
+var currentWindow = "all";
+var KNOWN_IPS = {"172.18.0.3":"Open WebUI","172.18.0.1":"App Server","192.168.44.9":"App Server"};
+
+function tick(){
+  var n=new Date(),h=n.getHours(),m=n.getMinutes(),s=n.getSeconds(),ap=h>=12?'PM':'AM';
+  h=h%12||12;
+  var pad=function(x){return String(x).padStart(2,'0')};
+  var el=document.getElementById('clock');
+  if(el) el.textContent=h+':'+pad(m)+':'+pad(s)+' '+ap;
+}
+tick(); setInterval(tick,1000);
+
+function showTab(tab){
+  // Clear node modal auto-refresh when navigating away
+  if(typeof _nodeModalInterval!=="undefined"&&_nodeModalInterval){clearInterval(_nodeModalInterval);_nodeModalInterval=null;_nodeModalName=null;}
+  document.getElementById("section-dashboard").style.display=tab==="dashboard"?"":"none";
+  document.getElementById("section-topology").style.display=tab==="topology"?"":"none";
+  document.getElementById("section-routing").style.display=tab==="routing"?"":"none";
+  document.getElementById("section-settings").style.display=tab==="settings"?"":"none";
+  if(tab==="settings") loadUsers();
+  ["dashboard","topology","routing","settings"].forEach(function(t){
+    var el=document.getElementById("tab-"+t);
+    if(el) el.className="tab-btn"+(tab===t?" active":"");
+  });
+  if(tab==="topology") drawTopology();
+  if(tab==="routing"){loadRouting();loadRoutingRules();}
+}
+
+function showToast(msg,isError){
+  var t=document.getElementById("toast");
+  t.textContent=msg;t.className="toast show"+(isError?" error":"");
+  setTimeout(function(){t.className="toast";},2500);
+}
+
+function showInfo(title,rows){
+  document.getElementById("info-title").textContent=title;
+  document.getElementById("info-body").innerHTML=rows.map(function(r){
+    return '<div class="info-row"><span class="info-key">'+r[0]+'</span><span class="info-val">'+r[1]+'</span></div>';
+  }).join("");
+  document.getElementById("info-panel").style.display="block";
+}
+function hideInfo(){document.getElementById("info-panel").style.display="none";}
+
+function updateRequireKeyUI(required){
+  var toggle=document.getElementById("require-key-toggle");
+  var label=document.getElementById("require-key-label");
+  if(toggle) toggle.checked=required;
+  if(label){label.textContent=required?"Enforced":"Open — requests allowed without a key";label.className="enforced-label "+(required?"on":"off");}
+}
+
+async function saveDefaultModel(){
+  var model=document.getElementById("model-select").value;
+  try{
+    var r=await fetch(API_PREFIX+"/admin/config/default-model",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:model})});
+    var d=await r.json();
+    if(d.success){defaultModel=model;showToast("Default model updated");document.getElementById("model-change-row").style.display="none";refresh();}
+  }catch(e){showToast("Failed",true);}
+}
+
+async function toggleNode(name,enabled){
+  try{
+    var r=await fetch(API_PREFIX+"/admin/config/node-toggle",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:name,enabled:enabled})});
+    var d=await r.json();
+    if(d.success){showToast(name+(enabled?" enabled":" disabled"));refresh();}
+  }catch(e){showToast("Failed",true);}
+}
+
+async function toggleRequireKey(enabled){
+  try{
+    var r=await fetch(API_PREFIX+"/admin/config/require-api-key",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({enabled:enabled})});
+    var d=await r.json();
+    if(d.success){showToast("Enforcement "+(enabled?"enabled":"disabled"));updateRequireKeyUI(enabled);}
+  }catch(e){showToast("Failed",true);}
+}
+
+async function updateTier(name,tier){
+  try{
+    var r=await fetch(API_PREFIX+"/admin/config/keys/tier",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:name,tier:parseInt(tier)})});
+    var d=await r.json();
+    if(d.success){showToast(name+" set to Tier "+tier);loadApiKeys();}
+  }catch(e){showToast("Failed",true);}
+}
+
+function tierBadge(tier){
+  var map={"1":["tier-priority","Priority"],"2":["tier-standard","Standard"],"3":["tier-economy","Economy"]};
+  var t=map[String(tier)]||["tier-standard","Standard"];
+  return '<span class="pill '+t[0]+'">T'+tier+' '+t[1]+'</span>';
+}
+
+async function loadApiKeys(){
+  try{
+    var r=await fetch(API_PREFIX+"/admin/config/keys");
+    var d=await r.json();
+    updateRequireKeyUI(d.require_api_key);
+    var list=document.getElementById("api-keys-list");
+    if(!d.keys.length){list.innerHTML='<span style="color:var(--text-hint)">No API keys configured</span>';return;}
+    var rows='';
+    for(var i=0;i<d.keys.length;i++){
+      var k=d.keys[i];
+      var kn=k.name;
+      rows+='<tr><td class="strong">'+kn+'</td><td class="key-val">'+k.key_preview+'</td><td>'+tierBadge(k.tier)+'</td>';
+      rows+='<td><select class="tier-select" data-name="'+kn+'" onchange="updateTier(this.dataset.name,this.value)">';
+      rows+='<option value="1"'+(k.tier==1?' selected':'')+'>T1 Priority</option>';
+      rows+='<option value="2"'+(k.tier==2?' selected':'')+'>T2 Standard</option>';
+      rows+='<option value="3"'+(k.tier==3?' selected':'')+'>T3 Economy</option>';
+      rows+='</select></td>';
+      rows+='<td><button class="revoke-btn" data-name="'+kn+'" onclick="revokeKey(this.dataset.name)">Revoke</button></td></tr>';
+    }
+    list.innerHTML='<table class="key-table"><thead><tr><th>Client</th><th>Key</th><th>Tier</th><th>Change Tier</th><th></th></tr></thead><tbody>'+rows+'</tbody></table>';
+  }catch(e){document.getElementById("api-keys-list").innerHTML='<span style="color:var(--red)">Failed to load keys</span>';}
+}
+
+async function addApiKey(){
+  var name=document.getElementById("new-key-name").value.trim();
+  var tier=parseInt(document.getElementById("new-key-tier").value)||2;
+  if(!name){showToast("Enter a client name",true);return;}
+  try{
+    var r=await fetch(API_PREFIX+"/admin/config/keys/add",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:name,tier:tier})});
+    var d=await r.json();
+    if(d.success){showToast("Key generated for "+name);document.getElementById("new-key-name").value="";showApiKeyModal(name,d.key);loadApiKeys();}
+  }catch(e){showToast("Failed",true);}
+}
+
+async function revokeKey(name){
+  if(!confirm("Revoke API key for "+name+"?")) return;
+  try{
+    var r=await fetch(API_PREFIX+"/admin/config/keys/revoke",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:name})});
+    var d=await r.json();
+    if(d.success){showToast("Key revoked for "+name);loadApiKeys();}
+  }catch(e){showToast("Failed",true);}
+}
+
+function setWindow(w){
+  currentWindow=w;
+  ["all","24h","7d"].forEach(function(id){document.getElementById("btn-"+id).className="tf-btn"+(id===w?" active":"");});
+  loadStats();
+}
+
+async function loadStats(){
+  try{
+    var d=await fetch(API_PREFIX+"/admin/stats?window="+currentWindow).then(function(r){return r.json();});
+    var tbody=document.getElementById("stats-tbody");
+    if(!d.clients.length){tbody.innerHTML='<tr><td colspan="5" style="color:var(--text-hint);padding:14px">No data</td></tr>';return;}
+    tbody.innerHTML=d.clients.map(function(c){
+      var lastSeen=c.last_seen?new Date(c.last_seen+"Z").toLocaleString():"-";
+      return "<tr><td class='red-link'>"+c.client+"</td><td class='strong'>"+c.total_requests+"</td>"+
+        "<td style='color:"+(c.failed_requests>0?"var(--red)":"var(--text-hint)")+"'>"+c.failed_requests+"</td>"+
+        "<td>"+c.avg_duration_ms+"ms</td><td style='font-size:11px;color:var(--text-hint)'>"+lastSeen+"</td></tr>";
+    }).join("");
+  }catch(e){document.getElementById("stats-tbody").innerHTML='<tr><td colspan="5" style="color:var(--red);padding:14px">Failed</td></tr>';}
+}
+
+async function loadRoutingRules(){
+  try{
+    var d=await fetch(API_PREFIX+"/admin/config/routing-rules").then(function(r){return r.json();});
+    var nodeNames=d.available_nodes||[];
+    var modelRules=d.routing_rules.models||{};
+    var clientRules=d.routing_rules.clients||{};
+    var nodeOpts=nodeNames.map(function(n){return '<option value="'+n+'">'+n+'</option>';}).join("");
+    ["rule-model-node","rule-client-node"].forEach(function(id){var sel=document.getElementById(id);if(sel)sel.innerHTML='<option value="">Select node...</option>'+nodeOpts;});
+    var modelSel=document.getElementById("rule-model-select");
+    if(modelSel)modelSel.innerHTML='<option value="">Select model...</option>'+allModels.map(function(m){return '<option value="'+m+'">'+m+'</option>';}).join("");
+    try{var kr=await fetch(API_PREFIX+"/admin/config/keys").then(function(r){return r.json();});var clientSel=document.getElementById("rule-client-select");if(clientSel)clientSel.innerHTML='<option value="">Select client...</option>'+kr.keys.map(function(k){return '<option value="'+k.name+'">'+k.name+'</option>';}).join("");}catch(e){}
+    var modelList=document.getElementById("model-rules-list");
+    var me=Object.entries(modelRules);
+    modelList.innerHTML=!me.length?'<span style="color:var(--text-hint)">No model rules set</span>':
+      me.map(function(e){return '<div class="rule-row"><span>'+e[0]+'</span><span class="rule-arrow">&rarr;</span><span class="rule-node">'+e[1]+'</span><button class="rule-clear" data-model="'+e[0]+'" onclick="clearModelRule(this.dataset.model)">&#215;</button></div>';}).join("");
+    var clientList=document.getElementById("client-rules-list");
+    var ce=Object.entries(clientRules);
+    clientList.innerHTML=!ce.length?'<span style="color:var(--text-hint)">No client rules set</span>':
+      ce.map(function(e){return '<div class="rule-row"><span>'+e[0]+'</span><span class="rule-arrow">&rarr;</span><span class="rule-node">'+e[1]+'</span><button class="rule-clear" data-client="'+e[0]+'" onclick="clearClientRule(this.dataset.client)">&#215;</button></div>';}).join("");
+  }catch(e){console.error("Failed to load routing rules",e);}
+}
+
+async function addModelRule(){
+  var model=document.getElementById("rule-model-select").value,node=document.getElementById("rule-model-node").value;
+  if(!model||!node){showToast("Select both a model and a node",true);return;}
+  try{var r=await fetch(API_PREFIX+"/admin/config/routing-rules/model",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:model,node:node})});var d=await r.json();if(d.success){showToast("Rule set");loadRoutingRules();}}catch(e){showToast("Failed",true);}
+}
+async function clearModelRule(model){
+  try{var r=await fetch(API_PREFIX+"/admin/config/routing-rules/model",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:model,node:""})});var d=await r.json();if(d.success){showToast("Rule cleared");loadRoutingRules();}}catch(e){showToast("Failed",true);}
+}
+async function addClientRule(){
+  var client=document.getElementById("rule-client-select").value,node=document.getElementById("rule-client-node").value;
+  if(!client||!node){showToast("Select both a client and a node",true);return;}
+  try{var r=await fetch(API_PREFIX+"/admin/config/routing-rules/client",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({client:client,node:node})});var d=await r.json();if(d.success){showToast("Rule set");loadRoutingRules();}}catch(e){showToast("Failed",true);}
+}
+async function clearClientRule(client){
+  try{var r=await fetch(API_PREFIX+"/admin/config/routing-rules/client",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({client:client,node:""})});var d=await r.json();if(d.success){showToast("Rule cleared");loadRoutingRules();}}catch(e){showToast("Failed",true);}
+}
+
+async function loadRouting(){
+  try{
+    var d=await fetch(API_PREFIX+"/admin/routing").then(function(r){return r.json();});
+    document.getElementById("route-algo").textContent=d.algorithm;
+    document.getElementById("route-algo-desc").textContent=d.algorithm_description;
+    var workload={};
+    try{var wd=await fetch(API_PREFIX+"/admin/workload").then(function(r){return r.json();});wd.nodes.forEach(function(n){workload[n.name]=n;});}catch(e){}
+    var lc=function(pct){return pct>=100?"var(--red)":pct>=50?"#c47800":"var(--green)";};
+    document.getElementById("route-nodes").innerHTML=d.nodes.map(function(node){
+      var pct=node.load_pct,w=workload[node.name]||{};
+      var statusText=!node.enabled?"Disabled":node.healthy?"Healthy":"Down";
+      var pillClass=!node.enabled?"pill pill-gray":node.healthy?"pill pill-green":"pill pill-red";
+      var am=w.active_models?Object.entries(w.active_models):[];
+      var amHtml=am.length?am.map(function(e){return '<span class="model-chip default">'+e[0].split(":")[0]+' x'+e[1]+'</span>';}).join(""):'<span style="color:var(--text-hint);font-size:11px">None active</span>';
+      var wRows=["4h","6h","12h","24h"].map(function(win){
+        var wdata=w.windows?w.windows[win]:null,total=wdata?wdata.total:0;
+        var models=wdata?Object.entries(wdata.models).sort(function(a,b){return b[1]-a[1];}):[];
+        var ms=models.length?models.slice(0,3).map(function(m){return m[0].split(":")[0]+"x"+m[1];}).join(", "):"—";
+        return '<tr><td style="color:var(--text-hint);font-size:11px;padding:3px 6px 3px 0">Last '+win+'</td><td style="font-weight:600;font-size:12px;padding:3px 6px">'+total+'</td><td style="color:var(--text-hint);font-size:11px">'+ms+'</td></tr>';
+      }).join("");
+      return '<div class="card" style="padding:14px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><div style="font-weight:700">'+node.name+'</div><span class="'+pillClass+'">'+statusText+'</span></div>'+
+        '<div style="display:flex;gap:14px;font-size:12px;color:var(--text-muted);margin-bottom:8px;flex-wrap:wrap"><span>Active <strong style="color:var(--text)">'+node.active_requests+'/'+node.max_concurrent+'</strong></span><span>Load <strong style="color:'+lc(pct)+'">'+pct+'%</strong></span><span>Total <strong style="color:var(--text)">'+(w.total_requests||0)+'</strong></span><span>Avg <strong style="color:var(--text-muted)">'+(w.avg_duration_ms||0)+'ms</strong></span></div>'+
+        '<div class="cap-bar-wrap"><div class="cap-bar" style="width:'+Math.min(100,pct)+'%;background:'+lc(pct)+'"></div></div>'+
+        '<div style="margin:10px 0 6px"><div style="font-size:10px;color:var(--text-hint);text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px">Active Now</div><div class="model-chips">'+amHtml+'</div></div>'+
+        '<div><div style="font-size:10px;color:var(--text-hint);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Request History</div><table style="width:100%;border-collapse:collapse">'+wRows+'</table></div></div>';
+    }).join("");
+    var modelRows=[];
+    d.model_routing.forEach(function(entry){
+      entry.candidates.forEach(function(c){
+        var sel=c.would_be_selected;
+        modelRows.push('<tr style="'+(sel?'background:var(--red-light)':'')+'"><td class="strong">'+(entry.model===defaultModel?'&#9733; ':'')+entry.model+'</td><td class="red-link">'+c.node+'</td><td><span style="color:'+lc(c.load_pct)+';font-weight:600">'+c.load_pct+'%</span></td><td>'+c.active_requests+'</td><td>'+c.max_concurrent+'</td><td>'+(sel?'<span style="color:var(--green);font-weight:700">&#10003; Yes</span>':'<span style="color:var(--text-hint)">&#8212;</span>')+'</td></tr>');
+      });
+    });
+    document.getElementById("route-models-tbody").innerHTML=modelRows.join("")||'<tr><td colspan="6" style="color:var(--text-hint);padding:14px">No data</td></tr>';
+    var keyTiers={};
+    try{var kr=await fetch(API_PREFIX+"/admin/config/keys").then(function(r){return r.json();});kr.keys.forEach(function(k){keyTiers[k.name]=k.tier;});}catch(e){}
+    if(!d.recent_client_routing.length){
+      document.getElementById("route-clients-tbody").innerHTML='<tr><td colspan="6" style="color:var(--text-hint);padding:14px">No recent client connections</td></tr>';
+    }else{
+      document.getElementById("route-clients-tbody").innerHTML=d.recent_client_routing.map(function(c){
+        var lastSeen=c.last_seen?new Date(c.last_seen+"Z").toLocaleString():"-";
+        return "<tr><td class='red-link'>"+c.client+"</td><td>"+tierBadge(keyTiers[c.client]||2)+"</td><td style='font-size:11px;color:var(--text-hint)'>"+c.source_ip+"</td><td class='strong'>"+(c.last_model||"-")+"</td><td style='color:var(--text-muted)'>"+(c.last_path||"-")+"</td><td style='font-size:11px;color:var(--text-hint)'>"+lastSeen+"</td></tr>";
+      }).join("");
+    }
+  }catch(e){console.error("Failed to load routing data",e);}
+}
+
+async function loadAlertConfig(){
+  try{
+    var d=await fetch(API_PREFIX+"/admin/alerts").then(function(r){return r.json();});
+    var cfg=d.config;
+    var toggle=document.getElementById("alert-enabled-toggle"),label=document.getElementById("alert-enabled-label");
+    if(toggle) toggle.checked=cfg.enabled;
+    if(label){label.textContent=cfg.enabled?"Alerts enabled":"Alerts disabled";label.className="enforced-label "+(cfg.enabled?"on":"off");}
+    var emailEl=document.getElementById("alert-email"),userEl=document.getElementById("alert-smtp-user"),threshEl=document.getElementById("alert-threshold");
+    if(emailEl) emailEl.value=cfg.email||"";
+    if(userEl) userEl.value=cfg.smtp_user||"";
+    if(threshEl) threshEl.value=String(cfg.failed_checks_before_alert||2);
+    var downNodes=Object.entries(d.node_status).filter(function(e){return e[1].alert_sent;});
+    var banner=document.getElementById("alert-banner"),bannerText=document.getElementById("alert-banner-text");
+    if(downNodes.length>0&&banner&&bannerText){bannerText.textContent="Node DOWN: "+downNodes.map(function(e){return e[0];}).join(", ");banner.style.display="flex";}
+  }catch(e){console.error("Failed to load alert config",e);}
+}
+
+async function saveAlertConfig(){
+  var enabled=document.getElementById("alert-enabled-toggle").checked;
+  var email=document.getElementById("alert-email").value.trim();
+  var smtpUser=document.getElementById("alert-smtp-user").value.trim();
+  var smtpPass=document.getElementById("alert-smtp-password").value;
+  var threshold=parseInt(document.getElementById("alert-threshold").value);
+  var msgEl=document.getElementById("alert-config-msg");
+  try{
+    var body={enabled:enabled,email:email,smtp_user:smtpUser,smtp_host:"smtp.office365.com",smtp_port:587,failed_checks_before_alert:threshold};
+    if(smtpPass) body.smtp_password=smtpPass;
+    var r=await fetch(API_PREFIX+"/admin/alerts/config",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+    var d=await r.json();
+    if(d.success){showToast("Alert config saved");if(msgEl){msgEl.textContent="Saved";msgEl.style.color="var(--green)";}loadAlertConfig();}
+  }catch(e){if(msgEl){msgEl.textContent="Failed: "+e.message;msgEl.style.color="var(--red)";}}
+}
+
+async function testAlert(){
+  var msgEl=document.getElementById("alert-config-msg");
+  try{
+    var r=await fetch(API_PREFIX+"/admin/alerts/test",{method:"POST"});
+    var d=await r.json();
+    if(d.success){showToast("Test email sent!");if(msgEl){msgEl.textContent=d.message;msgEl.style.color="var(--green)";}}
+  }catch(e){showToast("Failed to send test email",true);}
+}
+
+async function refresh(){
+  try{
+    var results=await Promise.all([
+      fetch(API_PREFIX+"/admin/status").then(function(r){return r.json();}),
+      fetch(API_PREFIX+"/admin/nodes").then(function(r){return r.json();}),
+      fetch(API_PREFIX+"/admin/models").then(function(r){return r.json();}),
+      fetch(API_PREFIX+"/admin/logs?limit=20").then(function(r){return r.json();}),
+      fetch(API_PREFIX+"/admin/workload").then(function(r){return r.json();})
+    ]);
+    var status=results[0],nodesData=results[1],modelsData=results[2],logsData=results[3],workloadData=results[4];
+    window._gatewayStartedAt=status.started_at||null;
+    defaultModel=status.default_model||"";
+    allModels=modelsData.models.map(function(m){return m.name;});
+    document.getElementById("status-badge").className="status-pill";
+    document.getElementById("status-text").textContent="Online";
+    document.getElementById("last-updated").textContent="Updated "+new Date().toLocaleTimeString();
+    document.getElementById("ov-nodes").textContent=status.healthy_nodes+" / "+status.node_count;
+    document.getElementById("ov-active").textContent=nodesData.nodes.reduce(function(s,n){return s+n.active_requests;},0);
+    document.getElementById("ov-model").textContent=defaultModel;
+    document.getElementById("default-model-pill").textContent=defaultModel;
+    try{var t24=0;workloadData.nodes.forEach(function(n){if(n.windows&&n.windows["24h"])t24+=n.windows["24h"].total;});document.getElementById("ov-24h").textContent=t24;}catch(e){}
+    var sel=document.getElementById("model-select");
+    sel.innerHTML=allModels.map(function(m){return '<option value="'+m+'"'+(m===defaultModel?" selected":"")+'>'+m+'</option>';}).join("");
+    document.getElementById("nodes-grid").innerHTML=nodesData.nodes.map(function(node){
+      var p=node.max_concurrent>0?Math.min(100,Math.round(node.active_requests/node.max_concurrent*100)):0;
+      var dotClass="node-dot"+(node.enabled?(node.healthy?"":" down"):" disabled");
+      var pillClass=!node.enabled?"pill pill-gray":node.healthy?"pill pill-green":"pill pill-red";
+      var pillText=!node.enabled?"Disabled":node.healthy?"Healthy":"Down";
+      var chips=node.available_models.map(function(m){return '<span class="model-chip'+(m===defaultModel?" default":"")+'">'+m+'</span>';}).join("");
+      return '<div class="node-row" style="cursor:pointer" data-name="'+node.name+'" onclick="showNodeDetail(this.dataset.name)">'+
+        '<div class="'+dotClass+'"></div>'+
+        '<div style="flex:1"><div style="display:flex;align-items:center;justify-content:space-between">'+
+          '<div><div class="node-name">'+node.name+'</div><div class="node-meta">'+node.url.replace('http://','')+' &middot; '+node.available_models.length+' models</div></div>'+
+          '<div style="display:flex;align-items:center;gap:8px"><span class="'+pillClass+'">'+pillText+'</span>'+
+          '<label class="toggle"><input type="checkbox" '+(node.enabled?"checked":"")+' data-name="'+node.name+'" onchange="toggleNode(this.dataset.name,this.checked)" onclick="event.stopPropagation()"><span class="toggle-slider" onclick="event.stopPropagation()"></span></label></div>'+
+        '</div>'+
+        '<div class="node-meta" style="margin-top:3px">'+node.active_requests+'/'+node.max_concurrent+' active</div>'+
+        '<div class="cap-bar-wrap"><div class="cap-bar" style="width:'+p+'%"></div></div>'+
+        '<div class="model-chips">'+chips+'</div><div class="node-accent"></div></div></div>';
+    }).join("");
+    document.getElementById("models-tbody").innerHTML=modelsData.models.map(function(m){
+      return '<tr><td class="strong">'+(m.name===defaultModel?'&#9733; ':'')+m.name+'</td><td class="red-link">'+m.nodes.join(", ")+'</td></tr>';
+    }).join("");
+    try{
+      var mt={};
+      workloadData.nodes.forEach(function(node){var w24=node.windows&&node.windows["24h"];if(!w24)return;Object.entries(w24.models).forEach(function(e){mt[e[0]]=(mt[e[0]]||0)+e[1];});});
+      var me=Object.entries(mt).sort(function(a,b){return b[1]-a[1];});
+      var maxV=me.length?me[0][1]:1,totalAll=Object.values(mt).reduce(function(s,v){return s+v;},0);
+      document.getElementById("model-usage-chart").innerHTML=me.length?
+        me.map(function(e){
+          var pct=Math.round(e[1]/maxV*100),sharePct=totalAll>0?Math.round(e[1]/totalAll*100):0,isDefault=e[0]===defaultModel;
+          return '<div class="usage-row"><div class="usage-name'+(isDefault?" highlight":"")+'">'+(isDefault?'&#9733; ':'')+e[0].split(":")[0]+'</div>'+
+            '<div class="usage-bar-wrap"><div class="usage-bar'+(isDefault?"":" dim")+'" style="width:'+pct+'%"></div></div>'+
+            '<div class="usage-nums">'+e[1]+' &middot; '+sharePct+'%</div></div>';
+        }).join(""):
+        '<div style="color:var(--text-hint);font-size:13px">No request data in last 24h</div>';
+    }catch(e){}
+    var showing=document.getElementById("log-showing");
+    if(showing) showing.textContent="showing "+Math.min(logsData.logs.length,5)+" of "+logsData.logs.length;
+    if(!logsData.logs.length){
+      document.getElementById("logs-tbody").innerHTML='<tr><td colspan="7" style="color:var(--text-hint);padding:14px">No requests logged yet</td></tr>';
+    }else{
+      document.getElementById("logs-tbody").innerHTML=logsData.logs.slice(0,5).map(function(l){
+        var time=new Date(l.timestamp+"Z").toLocaleTimeString();
+        return "<tr><td class='mono'>"+time+"</td><td class='red-link'>"+(l.client||"-")+"</td><td class='mono'>"+(l.model_used||"-")+"</td><td class='mono'>"+(l.node||"-")+"</td>"+
+          "<td style='color:var(--text-hint)'>"+l.wait_ms+"ms</td><td>"+l.duration_ms+"ms</td>"+
+          "<td>"+(l.success?'<span class="status-ok">'+l.status_code+'</span>':'<span class="status-err">'+l.status_code+'</span>')+"</td></tr>";
+      }).join("");
+    }
+  }catch(e){
+    document.getElementById("status-badge").className="status-pill offline";
+    document.getElementById("status-text").textContent="Offline";
+    document.getElementById("last-updated").textContent="Failed "+new Date().toLocaleTimeString();
+  }
+}
+
+var _topoDotKfCache={};
+function animateTraffic(x1,y1,x2,y2,color,duration){
+  var svg=document.getElementById("topology-svg");
+  if(!svg) return;
+  var dur=duration||1.5;
+  var kfKey="tdk_"+Math.round(x1)+"_"+Math.round(y1)+"_"+Math.round(x2)+"_"+Math.round(y2);
+  if(!_topoDotKfCache[kfKey]){
+    var s=document.createElement("style");
+    s.textContent="@keyframes "+kfKey+"{0%{cx:"+x1+";cy:"+y1+";opacity:0}5%{opacity:0.9}88%{opacity:0.9}100%{cx:"+x2+";cy:"+y2+";opacity:0}}";
+    document.head.appendChild(s);
+    _topoDotKfCache[kfKey]=true;
+  }
+  var dot=document.createElementNS("http://www.w3.org/2000/svg","circle");
+  dot.setAttribute("r","5");
+  dot.setAttribute("fill",color);
+  dot.setAttribute("cx",String(x1));
+  dot.setAttribute("cy",String(y1));
+  dot.style.animation=kfKey+" "+dur+"s ease-in-out 1 forwards";
+  svg.appendChild(dot);
+  setTimeout(function(){try{dot.remove();}catch(e){}},dur*1000+100);
+}
+var _topoPositions={};var _animIntervals=[];
+function clearTopoAnimations(){_animIntervals.forEach(function(id){clearInterval(id);});_animIntervals=[];}
+function startTrafficAnimations(cx,cy,aiNodes,clients){
+  clearTopoAnimations();
+  for(var i=0;i<aiNodes.length;i++){(function(node,pos){if(node.active_requests>0){animateTraffic(cx,cy,pos.x,pos.y,"#2a7a2a",1.2);var iv=setInterval(function(){if(node.active_requests>0)animateTraffic(cx,cy,pos.x,pos.y,"#2a7a2a",1.2);},1400);_animIntervals.push(iv);}})(aiNodes[i],_topoPositions["ai-"+i]);}
+  for(var j=0;j<clients.length;j++){(function(client,pos){var lastSeen=client.last_seen?new Date(client.last_seen+"Z").getTime():0,age=Date.now()-lastSeen;if(age<60000){animateTraffic(pos.x,pos.y,cx,cy,"#2b5faa",1.0);if(age<10000){var iv=setInterval(function(){animateTraffic(pos.x,pos.y,cx,cy,"#2b5faa",1.0);},1200);_animIntervals.push(iv);}}})(clients[j],_topoPositions["cli-"+j]);}
+}
+function attachHandler(id,fn){var el=document.getElementById(id);if(el)el.addEventListener("click",fn);}
+
+async function drawTopology(){
+  try{
+    var results=await Promise.all([
+      fetch(API_PREFIX+"/admin/topology?window=86400").then(function(r){return r.json();}),
+      fetch(API_PREFIX+"/admin/workload").then(function(r){return r.json();}),
+      fetch(API_PREFIX+"/admin/stats?window=24h").then(function(r){return r.json();})
+    ]);
+    var data=results[0],workload=results[1],statsData=results[2];
+    var clientStats={};
+    (statsData.clients||[]).forEach(function(s){clientStats[s.client]=s.total_requests;});
+    var wlMap={};
+    (workload.nodes||[]).forEach(function(n){wlMap[n.name]=n;});
+    var aiNodes=data.ai_nodes||[];
+    var clients=data.clients||[];
+
+    // Node cards
+    document.getElementById("topo-node-cards").innerHTML=workload.nodes.map(function(node){
+      var pct=node.ram_pct||0;
+      var used=(node.vram_used_gb||0).toFixed(1);
+      var total=node.total_ram_gb||0;
+      var rc=pct>=85?"var(--red)":pct>=60?"#c47800":"var(--green)";
+      var loaded=node.loaded_models||[];
+      var inferHtml=node.active_requests>0
+        ?'<div style="display:flex;align-items:center;gap:5px;margin-bottom:4px"><span style="width:7px;height:7px;border-radius:50%;background:#c47800;display:inline-block;flex-shrink:0"></span><span style="font-size:11px;color:#c47800;font-weight:600">Inferring '+node.active_requests+' req'+(node.active_requests>1?"s":"")+'</span></div>'
+        :'<div style="font-size:11px;color:var(--text-hint);margin-bottom:4px">Idle</div>';
+      var modHtml=loaded.length
+        ?loaded.map(function(m){return'<div style="font-size:11px;color:var(--text-muted)">&#9642; '+m.name.split(":")[0]+' <span style="color:var(--text-hint)">('+m.size_gb+'GB)</span></div>';}).join("")
+        :'<div style="font-size:11px;color:var(--text-hint)">No models loaded</div>';
+      return'<div style="padding:10px 14px;border-bottom:1px solid var(--border);cursor:pointer" data-name="'+node.name+'" onclick="showNodeDetail(this.dataset.name)">'+
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">'+
+          '<span style="font-weight:600;font-size:13px">'+node.name+'</span>'+
+          '<span class="pill '+(node.healthy?"pill-green":"pill-red")+'">'+(node.healthy?"Healthy":"Down")+'</span>'+
+        '</div>'+
+        inferHtml+
+        '<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-hint);margin-bottom:3px">'+
+          '<span>'+used+' / '+total+' GB</span>'+
+          (node.queued_requests>0?'<span style="color:var(--red);font-weight:600">'+node.queued_requests+' queued</span>':'')+
+        '</div>'+
+        '<div class="cap-bar-wrap"><div class="cap-bar" style="width:'+Math.min(100,pct)+'%;background:'+rc+'"></div></div>'+
+        '<div style="font-size:11px;color:'+rc+';font-weight:600;margin-bottom:5px">'+pct+'% RAM</div>'+
+        '<div style="font-size:10px;color:var(--text-hint);text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">In Memory</div>'+
+        modHtml+
+      '</div>';
+    }).join("");
+
+    // Recent feed
+    var feedHtml=clients.filter(function(c){return c.last_seen&&(Date.now()-new Date(c.last_seen+"Z").getTime())<86400000;})
+      .map(function(c){
+        var age=(Date.now()-new Date(c.last_seen+"Z").getTime())/1000;
+        var ago=age<60?Math.round(age)+"s ago":age<3600?Math.round(age/60)+"m ago":Math.round(age/3600)+"h ago";
+        var name=c.client!=="anonymous"?c.client:"unknown";
+        var modelShort=c.last_model?c.last_model.split(":")[0]:"";
+        var reqs=clientStats[c.client]?clientStats[c.client]+" reqs":"";
+        return'<div style="padding:8px 14px;border-bottom:1px solid var(--gray-100)">'+
+          '<div style="display:flex;justify-content:space-between">'+
+            '<span style="font-weight:600;font-size:12px;color:var(--red)">'+name+'</span>'+
+            '<span style="font-size:11px;color:var(--text-hint)">'+ago+'</span>'+
+          '</div>'+
+          '<div style="font-size:11px;color:var(--text-muted);margin-top:2px">'+
+            (modelShort?"→ "+modelShort:"")+
+            (reqs?" · "+reqs:"")+
+          '</div>'+
+        '</div>';
+      }).join("");
+    document.getElementById("topo-recent-feed").innerHTML=feedHtml||'<div style="padding:14px;color:var(--text-hint);font-size:12px">No recent connections</div>';
+
+    // SVG
+    var svg=document.getElementById("topology-svg");
+    var W=svg.parentElement.clientWidth||800,H=svg.parentElement.clientHeight||600;
+    svg.setAttribute("viewBox","0 0 "+W+" "+H);
+    var gwX=Math.round(W*0.45),gwY=Math.round(H*0.5);
+    var gwR=Math.min(Math.min(W,H)*0.12,90);gwR=Math.max(gwR,60);
+    var nodeR=Math.round(gwR*0.85),clientR=Math.round(gwR*0.65);
+    var fLg=Math.round(nodeR*0.24),fMd=Math.round(nodeR*0.18),fSm=Math.round(nodeR*0.15);
+
+    var aiPositions=aiNodes.map(function(node,i){
+      var yf=aiNodes.length===1?0.5:(i/(Math.max(aiNodes.length-1,1)))*(0.80-0.20)+0.20;
+      return{x:Math.round(W*0.75),y:Math.round(H*yf),node:node};
+    });
+    var cliX=Math.round(W*0.16);
+    var clientPositions=clients.map(function(client,i){
+      var total=clients.length;
+      var spread=Math.min(H*0.70,120*total);
+      var y=total===1?gwY:Math.round(gwY-spread/2+(spread/Math.max(1,total-1))*i);
+      return{x:cliX,y:y,client:client};
+    });
+
+    function cliColor(ls){if(!ls)return"#ccc";var a=(Date.now()-new Date(ls+"Z").getTime())/1000;if(a<300)return"#2b5faa";if(a<3600)return"#6a90c8";if(a<21600)return"#9ab0c8";return"#ccc";}
+    function cliOpacity(ls){if(!ls)return 0.3;var a=(Date.now()-new Date(ls+"Z").getTime())/1000;if(a<300)return 1;if(a<3600)return 0.75;if(a<21600)return 0.5;return 0.3;}
+    function timeAgo(ls){if(!ls)return"";var a=(Date.now()-new Date(ls+"Z").getTime())/1000;if(a<60)return Math.round(a)+"s ago";if(a<3600)return Math.round(a/60)+"m ago";return Math.round(a/3600)+"h ago";}
+
+    var totalActive=aiNodes.reduce(function(s,n){return s+n.active_requests;},0);
+    var html="",handlers=[];
+
+    // Lines — client to gateway with request count label
+    clientPositions.forEach(function(cp){
+      var color=cliColor(cp.client.last_seen);
+      var op=cliOpacity(cp.client.last_seen)*0.5;
+      var reqs=clientStats[cp.client.client]||0;
+      var mx=Math.round((cp.x+gwX)/2);
+      var my=Math.round((cp.y+gwY)/2);
+      html+='<line x1="'+cp.x+'" y1="'+cp.y+'" x2="'+gwX+'" y2="'+gwY+'" stroke="'+color+'" stroke-width="1.5" opacity="'+op+'"/>';
+      if(reqs>0){
+        html+='<rect x="'+(mx-18)+'" y="'+(my-9)+'" width="36" height="16" rx="4" fill="var(--surface)" opacity="0.9"/>';
+        html+='<text x="'+mx+'" y="'+(my+4)+'" text-anchor="middle" font-size="'+(fSm-2)+'" fill="'+color+'" font-weight="600" font-family="Segoe UI,sans-serif">'+reqs+'</text>';
+      }
+    });
+    aiPositions.forEach(function(ap){
+      var lc=ap.node.healthy?"#b5d9b5":"#e8c8c8";
+      var lw=ap.node.active_requests>0?3:1.5;
+      html+='<line x1="'+gwX+'" y1="'+gwY+'" x2="'+ap.x+'" y2="'+ap.y+'" stroke="'+lc+'" stroke-width="'+lw+'"/>';
+    });
+
+    // Client nodes
+    if(!clients.length) html+='<text x="'+cliX+'" y="'+gwY+'" text-anchor="middle" font-size="'+fSm+'" fill="#ccc" font-family="Segoe UI,sans-serif">No recent connections</text>';
+    clientPositions.forEach(function(cp){
+      var c=cp.client;
+      var color=cliColor(c.last_seen);
+      var op=cliOpacity(c.last_seen);
+      var name=c.client!=="anonymous"?c.client:"unknown";
+      var reqs=clientStats[c.client]?clientStats[c.client]+" reqs":"";
+      var nid="n-cli-"+name.replace(/[^a-z0-9]/gi,"-");
+      html+='<g id="'+nid+'" style="cursor:pointer" opacity="'+op+'" pointer-events="all">';
+      html+='<circle cx="'+cp.x+'" cy="'+cp.y+'" r="'+clientR+'" fill="#fff" stroke="'+color+'" stroke-width="2"/>';
+      html+='<text x="'+cp.x+'" y="'+(cp.y-clientR*0.38)+'" text-anchor="middle" font-size="'+fMd+'" fill="'+color+'" font-weight="700" font-family="Segoe UI,sans-serif">'+name+'</text>';
+      html+='<text x="'+cp.x+'" y="'+(cp.y-clientR*0.08)+'" text-anchor="middle" font-size="'+(fSm-1)+'" fill="#aaa" font-family="Segoe UI,sans-serif">'+c.source_ip+'</text>';
+      if(reqs) html+='<text x="'+cp.x+'" y="'+(cp.y+clientR*0.22)+'" text-anchor="middle" font-size="'+(fSm-1)+'" fill="#2b5faa" font-family="Segoe UI,sans-serif">'+reqs+'</text>';
+      html+='<text x="'+cp.x+'" y="'+(cp.y+clientR*0.48)+'" text-anchor="middle" font-size="'+(fSm-1)+'" fill="'+color+'" font-family="Segoe UI,sans-serif">'+timeAgo(c.last_seen)+'</text>';
+      html+='</g>';
+      (function(cl,dn,nidl){
+        handlers.push({id:nidl,fn:function(){showInfo("Client — "+dn,[["Name",dn],["IP",cl.source_ip],["API Key",cl.client],["Last Model",cl.last_model||"-"],["Requests (24h)",clientStats[cl.client]||0],["Last Seen",cl.last_seen?new Date(cl.last_seen+"Z").toLocaleString():"-"]]);}}); 
+      })(c,name,nid);
+    });
+
+    // AI nodes
+    aiPositions.forEach(function(ap,i){
+      var node=ap.node;
+      var w=wlMap[node.name]||{};
+      var color=!node.enabled?"#ccc":node.healthy?"#2a7a2a":"#B5282A";
+      var pct=w.ram_pct||0;
+      var used=(w.vram_used_gb||0).toFixed(1);
+      var rc=pct>=85?"#B5282A":pct>=60?"#c47800":"#2a7a2a";
+      var nid="n-ai-"+i;
+      html+='<g id="'+nid+'" style="cursor:pointer" pointer-events="all">';
+      html+='<circle cx="'+ap.x+'" cy="'+ap.y+'" r="'+nodeR+'" fill="#fff" stroke="'+color+'" stroke-width="2.5"/>';
+      if(node.active_requests>0) html+='<circle cx="'+ap.x+'" cy="'+ap.y+'" r="'+(nodeR+6)+'" fill="none" stroke="'+color+'" stroke-width="1" opacity="0.25"/>';
+      html+='<text x="'+ap.x+'" y="'+(ap.y-nodeR*0.42)+'" text-anchor="middle" font-size="'+fLg+'" fill="'+color+'" font-weight="700" font-family="Segoe UI,sans-serif">'+node.name+'</text>';
+      html+='<text x="'+ap.x+'" y="'+(ap.y-nodeR*0.16)+'" text-anchor="middle" font-size="'+fSm+'" fill="#888" font-family="Segoe UI,sans-serif">'+node.ip+'</text>';
+      html+='<text x="'+ap.x+'" y="'+(ap.y+nodeR*0.08)+'" text-anchor="middle" font-size="'+fMd+'" fill="#666" font-family="Segoe UI,sans-serif">'+node.active_requests+'/'+node.max_concurrent+' active</text>';
+      html+='<text x="'+ap.x+'" y="'+(ap.y+nodeR*0.30)+'" text-anchor="middle" font-size="'+fSm+'" fill="'+rc+'" font-weight="600" font-family="Segoe UI,sans-serif">'+pct+'% RAM · '+used+'/'+(w.total_ram_gb||'?')+'GB</text>';
+      if(node.queued_requests>0) html+='<text x="'+ap.x+'" y="'+(ap.y+nodeR*0.52)+'" text-anchor="middle" font-size="'+fSm+'" fill="#B5282A" font-weight="700" font-family="Segoe UI,sans-serif">'+node.queued_requests+' queued</text>';
+      html+='<text x="'+ap.x+'" y="'+(ap.y+nodeR*(node.queued_requests>0?0.70:0.52))+'" text-anchor="middle" font-size="'+fSm+'" fill="'+color+'" font-weight="600" font-family="Segoe UI,sans-serif">'+(node.healthy?"● Healthy":"● DOWN")+'</text>';
+      html+='</g>';
+      (function(n){handlers.push({id:nid,fn:function(){showNodeDetail(n.name);}});})(node);
+    });
+
+    // Gateway
+    html+='<g id="n-gateway" style="cursor:pointer" pointer-events="all">';
+    html+='<circle cx="'+gwX+'" cy="'+gwY+'" r="'+gwR+'" fill="#fff" stroke="'+(totalActive>0?"#B5282A":"#ccc")+'" stroke-width="2.5"/>';
+    html+='<text x="'+gwX+'" y="'+(gwY-gwR*0.28)+'" text-anchor="middle" font-size="'+fLg+'" fill="#B5282A" font-weight="700" font-family="Segoe UI,sans-serif">AI Gateway</text>';
+    html+='<text x="'+gwX+'" y="'+(gwY+gwR*0.04)+'" text-anchor="middle" font-size="'+fSm+'" fill="#888" font-family="Segoe UI,sans-serif">192.168.44.9</text>';
+    html+='<text x="'+gwX+'" y="'+(gwY+gwR*0.28)+'" text-anchor="middle" font-size="'+(fSm-1)+'" fill="#aaa" font-family="Segoe UI,sans-serif">port 8000</text>';
+    if(totalActive>0) html+='<text x="'+gwX+'" y="'+(gwY+gwR*0.52)+'" text-anchor="middle" font-size="'+fMd+'" fill="#B5282A" font-weight="700" font-family="Segoe UI,sans-serif">'+totalActive+' active</text>';
+    html+='</g>';
+    html+='<text x="'+cliX+'" y="'+Math.round(H*0.06)+'" text-anchor="middle" font-size="'+(fSm-1)+'" fill="#ccc" letter-spacing="2" font-family="Segoe UI,sans-serif">CLIENTS</text>';
+    html+='<text x="'+Math.round(W*0.75)+'" y="'+Math.round(H*0.06)+'" text-anchor="middle" font-size="'+(fSm-1)+'" fill="#ccc" letter-spacing="2" font-family="Segoe UI,sans-serif">AI NODES</text>';
+
+    svg.innerHTML=html;
+    setTimeout(function(){
+      handlers.forEach(function(h){attachHandler(h.id,h.fn);});
+      attachHandler("n-gateway",function(){showInfo("AI Gateway",[["IP","192.168.44.9"],["Port","8000"],["Status","Online"],["Default Model",defaultModel],["Active Requests",totalActive],["Clients",clients.length],["Nodes",aiNodes.length]]);});
+      startTrafficAnimations(gwX,gwY,aiNodes,clientPositions.map(function(cp){return{x:cp.x,y:cp.y,last_seen:cp.client.last_seen,active_requests:0};}));
+    },50);
+
+  }catch(e){
+    console.error("Topology error",e);
+    document.getElementById("topology-svg").innerHTML='<text x="50%" y="50%" text-anchor="middle" fill="#B5282A" font-size="14">Failed to load topology</text>';
+  }
+}
+
+async function showNodeDetail(nodeName){
+  var overlay=document.getElementById("node-modal-overlay");
+  overlay.style.display="flex";
+  document.getElementById("node-modal-content").innerHTML='<div style="color:var(--text-hint);text-align:center;padding:40px">Loading...</div>';
+  try{
+    var workload=await fetch(API_PREFIX+"/admin/workload").then(function(r){return r.json();});
+    var node=workload.nodes.find(function(n){return n.name===nodeName;});
+    if(!node){document.getElementById("node-modal-content").innerHTML='<div style="color:var(--red)">Node not found</div>';return;}
+    var ramColor=node.ram_pct>=85?"var(--red)":node.ram_pct>=60?"#c47800":"var(--green)";
+    var loadColor=node.load_pct>=100?"var(--red)":node.load_pct>=50?"#c47800":"var(--green)";
+    var errRate=node.total_requests>0?Math.round(node.total_errors/node.total_requests*100):0;
+    var loadedHtml=node.loaded_models&&node.loaded_models.length?
+      node.loaded_models.map(function(m){var pct=node.total_ram_gb>0?Math.round(m.size_gb/node.total_ram_gb*100):0;
+        return '<div class="loaded-model-card"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px"><span class="loaded-model-name">'+m.name+'</span><span class="loaded-model-meta">'+m.size_gb+' GB ('+pct+'%)</span></div><div class="cap-bar-wrap"><div class="cap-bar" style="width:'+Math.min(100,pct)+'%"></div></div></div>';
+      }).join(""):
+      '<div style="color:var(--text-hint);padding:10px">No models currently loaded in memory</div>';
+    // Fetch client+model breakdown for this node
+    var nodeStats={};
+    try{
+      var nsData=await fetch(API_PREFIX+"/admin/stats/node/"+encodeURIComponent(node.name)).then(function(r){return r.json();});
+      nodeStats=nsData.windows||{};
+    }catch(e){}
+    var histRows=["4h","6h","12h","24h"].map(function(win){
+      var wdata=node.windows?node.windows[win]:null,total=wdata?wdata.total:0;
+      var nsWin=nodeStats[win];
+      var rowHtml="";
+      if(nsWin&&nsWin.rows&&nsWin.rows.length){
+        rowHtml=nsWin.rows.map(function(r){
+          var pct=nsWin.total>0?Math.round(r.count/nsWin.total*100):0;
+          return '<div style="margin-bottom:4px">'+
+            '<div style="display:flex;justify-content:space-between;margin-bottom:1px">'+
+              '<span style="font-size:11px;color:var(--text-muted)">'+
+                '<span style="color:var(--red);font-weight:600">'+r.client+'</span>'+
+                ' <span style="color:var(--text-hint)">&#8594;</span> '+
+                r.model+
+              '</span>'+
+              '<span style="font-size:11px;color:var(--text-hint)">'+r.count+' ('+pct+'%)</span>'+
+            '</div>'+
+            '<div class="cap-bar-wrap"><div class="cap-bar" style="width:'+pct+'%"></div></div>'+
+          '</div>';
+        }).join("");
+      } else {
+        rowHtml='<span style="color:var(--text-hint);font-size:12px">No requests</span>';
+      }
+      return '<tr style="border-top:1px solid var(--border)"><td style="color:var(--text-hint);font-size:12px;padding:8px 8px 8px 0;vertical-align:top;white-space:nowrap">Last '+win+'</td><td style="font-weight:700;font-size:14px;padding:8px;vertical-align:top;text-align:right;color:var(--text)">'+total+'</td><td style="padding:8px 0;vertical-align:top">'+rowHtml+'</td></tr>';
+    }).join("");
+    var am=node.active_models?Object.entries(node.active_models):[];
+    var amHtml=am.length?am.map(function(e){return '<span class="model-chip default" style="font-size:12px;padding:3px 10px">'+e[0].split(":")[0]+' x'+e[1]+'</span>';}).join(""):'<span style="color:var(--text-hint);font-size:13px">No active requests right now</span>';
+    document.getElementById("node-modal-content").innerHTML=
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px">'+
+        '<div><div style="font-size:18px;font-weight:700;color:var(--text);margin-bottom:3px">'+node.name+'</div>'+
+        '<div style="font-size:12px;color:var(--text-hint)">'+(node.healthy?"Online":"Down")+' &middot; '+node.total_ram_gb+' GB RAM</div></div>'+
+        '<div style="font-size:11px;color:var(--text-hint);text-align:right">Since restart<br>'+(window._gatewayStartedAt?new Date(window._gatewayStartedAt+"Z").toLocaleString():"unknown")+'</div>'+
+      '</div>'+
+      '<div class="modal-stat-grid">'+
+        '<div class="modal-stat"><div class="modal-stat-val" style="color:'+loadColor+'">'+node.active_requests+'/'+node.max_concurrent+'</div><div class="modal-stat-lbl">Active / Max</div></div>'+
+        '<div class="modal-stat"><div class="modal-stat-val" style="color:'+ramColor+'">'+node.ram_pct+'%</div><div class="modal-stat-lbl">RAM Used</div><div class="modal-stat-sub">'+node.vram_used_gb.toFixed(1)+' / '+node.total_ram_gb+' GB</div></div>'+
+        '<div class="modal-stat"><div class="modal-stat-val">'+node.total_requests+'</div><div class="modal-stat-lbl">Total Requests</div><div class="modal-stat-sub">since last restart</div></div>'+
+        '<div class="modal-stat"><div class="modal-stat-val" style="color:'+(node.total_errors>0?"var(--red)":"var(--green)")+'">'+errRate+'%</div><div class="modal-stat-lbl">Error Rate</div><div class="modal-stat-sub">'+node.total_errors+' errors &middot; '+node.avg_duration_ms+'ms avg</div></div>'+
+      '</div>'+
+      '<div style="margin-bottom:16px"><div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="font-size:11px;color:var(--text-hint);text-transform:uppercase;letter-spacing:.05em">RAM Usage</span><span style="font-size:12px;color:'+ramColor+';font-weight:600">'+node.ram_pct+'%</span></div><div class="cap-bar-wrap" style="height:8px"><div class="cap-bar" style="width:'+Math.min(100,node.ram_pct)+'%;background:'+ramColor+'"></div></div></div>'+
+      '<div style="margin-bottom:16px"><div style="font-size:11px;color:var(--text-hint);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Active Right Now</div><div class="model-chips">'+amHtml+'</div></div>'+
+      '<div style="margin-bottom:16px"><div style="font-size:11px;color:var(--text-hint);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Models in Memory</div>'+loadedHtml+'</div>'+
+      '<div><div style="font-size:11px;color:var(--text-hint);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Request History</div><table class="hist-table" style="width:100%;border-collapse:collapse">'+histRows+'</table></div>';
+  }catch(e){document.getElementById("node-modal-content").innerHTML='<div style="color:var(--red)">Failed to load: '+e.message+'</div>';}
+}
+
+var _nodeModalInterval=null,_nodeModalName=null;
+function closeNodeModal(){document.getElementById("node-modal-overlay").style.display="none";if(_nodeModalInterval){clearInterval(_nodeModalInterval);_nodeModalInterval=null;}_nodeModalName=null;}
+var _origShowNodeDetail=showNodeDetail;
+showNodeDetail=async function(nodeName){_nodeModalName=nodeName;await _origShowNodeDetail(nodeName);if(_nodeModalInterval)clearInterval(_nodeModalInterval);_nodeModalInterval=setInterval(function(){if(_nodeModalName)_origShowNodeDetail(_nodeModalName);},5000);};
+document.addEventListener("keydown",function(e){if(e.key==="Escape")closeNodeModal();});
+</script>
+
+<!-- Settings Tab -->
+<div id="section-settings" style="display:none;padding:16px 20px">
+  <div class="grid2" style="max-width:900px">
+    <!-- User list card -->
+    <div class="card" style="grid-column:1/-1">
+      <div class="card-header" style="display:flex;align-items:center;justify-content:space-between">
+        <span class="card-title">Dashboard Users</span>
+        <button class="btn-sm" onclick="openCreateUser()">+ Add User</button>
+      </div>
+      <div style="padding:12px 14px">
+        <table class="user-table">
+          <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Created</th><th></th></tr></thead>
+          <tbody id="users-tbody"><tr><td colspan="5" style="color:var(--text-hint);padding:14px">Loading...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Change Password Modal -->
+<div id="chpw-modal-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:300;align-items:center;justify-content:center" onclick="if(event.target===this)closeChpwModal()">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;width:360px;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,.3)">
+    <div style="background:var(--red);padding:14px 18px"><div style="color:#fff;font-weight:600;font-size:15px">Change Password</div></div>
+    <div style="padding:18px">
+      <div class="field" style="margin-bottom:12px"><label style="display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--text-hint);margin-bottom:5px">Current Password</label><input type="password" id="chpw-current" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--text);font-size:13px"></div>
+      <div class="field" style="margin-bottom:12px"><label style="display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--text-hint);margin-bottom:5px">New Password</label><input type="password" id="chpw-new" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--text);font-size:13px"></div>
+      <div class="field" style="margin-bottom:16px"><label style="display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--text-hint);margin-bottom:5px">Confirm New Password</label><input type="password" id="chpw-confirm" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--text);font-size:13px"></div>
+      <div id="chpw-error" style="color:var(--red);font-size:12px;margin-bottom:10px;display:none"></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn-sm" style="background:var(--gray-100);color:var(--text)" onclick="closeChpwModal()">Cancel</button>
+        <button class="btn-sm" onclick="submitChangePassword()">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Create User Modal -->
+<div id="create-user-modal-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:300;align-items:center;justify-content:center" onclick="if(event.target===this)closeCreateUserModal()">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;width:380px;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,.3)">
+    <div style="background:var(--red);padding:14px 18px"><div style="color:#fff;font-weight:600;font-size:15px">Add User</div></div>
+    <div style="padding:18px">
+      <div class="field" style="margin-bottom:12px"><label style="display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--text-hint);margin-bottom:5px">Full Name</label><input type="text" id="cu-name" placeholder="Jane Smith" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--text);font-size:13px"></div>
+      <div class="field" style="margin-bottom:12px"><label style="display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--text-hint);margin-bottom:5px">Email</label><input type="email" id="cu-email" placeholder="jane@georgetowntexas.gov" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--text);font-size:13px"></div>
+      <div class="field" style="margin-bottom:12px"><label style="display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--text-hint);margin-bottom:5px">Temporary Password</label><input type="password" id="cu-password" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--text);font-size:13px"></div>
+      <div class="field" style="margin-bottom:16px"><label style="display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--text-hint);margin-bottom:5px">Role</label>
+        <select id="cu-role" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--text);font-size:13px">
+          <option value="viewer">Viewer — read-only access</option>
+          <option value="admin">Admin — full access</option>
+        </select>
+      </div>
+      <div id="cu-error" style="color:var(--red);font-size:12px;margin-bottom:10px;display:none"></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn-sm" style="background:var(--gray-100);color:var(--text)" onclick="closeCreateUserModal()">Cancel</button>
+        <button class="btn-sm" onclick="submitCreateUser()">Create User</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// --- Account / User Management ---
+var _currentUser = null;
+
+async function loadCurrentUser() {
+  try {
+    var r = await fetch(API_PREFIX + "/admin/me");
+    if (r.status === 401) { location.href = "/gateway/login?error=2"; return; }
+    _currentUser = await r.json();
+    document.getElementById("account-name").textContent = _currentUser.name;
+    document.getElementById("account-email").textContent = _currentUser.email;
+    document.getElementById("account-role-badge").textContent = _currentUser.role === "admin" ? "Admin" : "Viewer";
+    // Show admin-only UI
+    if (_currentUser.role === "admin") {
+      document.querySelectorAll(".admin-only").forEach(function(el){ el.style.display = ""; });
+    }
+    // Set account icon initials
+    var initials = _currentUser.name.split(" ").map(function(w){return w[0];}).join("").substring(0,2).toUpperCase();
+    document.querySelector(".account-icon").textContent = initials;
+  } catch(e) { console.error("loadCurrentUser failed", e); }
+}
+
+function toggleAccountMenu() {
+  document.getElementById("account-dropdown").classList.toggle("open");
+}
+document.addEventListener("click", function(e) {
+  var menu = document.getElementById("account-menu");
+  if (menu && !menu.contains(e.target)) {
+    var dd = document.getElementById("account-dropdown");
+    if (dd) dd.classList.remove("open");
+  }
+});
+
+// Change password modal
+function openChangePassword() {
+  document.getElementById("account-dropdown").classList.remove("open");
+  document.getElementById("chpw-current").value = "";
+  document.getElementById("chpw-new").value = "";
+  document.getElementById("chpw-confirm").value = "";
+  document.getElementById("chpw-error").style.display = "none";
+  document.getElementById("chpw-modal-overlay").style.display = "flex";
+}
+function closeChpwModal() { document.getElementById("chpw-modal-overlay").style.display = "none"; }
+async function submitChangePassword() {
+  var current = document.getElementById("chpw-current").value;
+  var newpw = document.getElementById("chpw-new").value;
+  var confirm = document.getElementById("chpw-confirm").value;
+  var errEl = document.getElementById("chpw-error");
+  errEl.style.display = "none";
+  if (newpw.length < 8) { errEl.textContent = "New password must be at least 8 characters."; errEl.style.display = "block"; return; }
+  if (newpw !== confirm) { errEl.textContent = "Passwords do not match."; errEl.style.display = "block"; return; }
+  try {
+    var r = await fetch(API_PREFIX + "/admin/users/change-password", {
+      method: "POST", headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({current_password: current, new_password: newpw})
+    });
+    if (r.ok) { closeChpwModal(); alert("Password changed successfully."); }
+    else { var d = await r.json(); errEl.textContent = d.detail || "Failed."; errEl.style.display = "block"; }
+  } catch(e) { errEl.textContent = "Request failed."; errEl.style.display = "block"; }
+}
+
+// Create user modal
+function openCreateUser() {
+  document.getElementById("cu-name").value = "";
+  document.getElementById("cu-email").value = "";
+  document.getElementById("cu-password").value = "";
+  document.getElementById("cu-role").value = "viewer";
+  document.getElementById("cu-error").style.display = "none";
+  document.getElementById("create-user-modal-overlay").style.display = "flex";
+}
+function closeCreateUserModal() { document.getElementById("create-user-modal-overlay").style.display = "none"; }
+async function submitCreateUser() {
+  var name = document.getElementById("cu-name").value.trim();
+  var email = document.getElementById("cu-email").value.trim();
+  var password = document.getElementById("cu-password").value;
+  var role = document.getElementById("cu-role").value;
+  var errEl = document.getElementById("cu-error");
+  errEl.style.display = "none";
+  if (!name || !email || !password) { errEl.textContent = "All fields are required."; errEl.style.display = "block"; return; }
+  try {
+    var r = await fetch(API_PREFIX + "/admin/users/create", {
+      method: "POST", headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({name: name, email: email, password: password, role: role})
+    });
+    if (r.ok) { closeCreateUserModal(); loadUsers(); }
+    else { var d = await r.json(); errEl.textContent = d.detail || "Failed."; errEl.style.display = "block"; }
+  } catch(e) { errEl.textContent = "Request failed."; errEl.style.display = "block"; }
+}
+
+// User list
+async function loadUsers() {
+  var tbody = document.getElementById("users-tbody");
+  if (!tbody) return;
+  try {
+    var users = await fetch(API_PREFIX + "/admin/users").then(function(r){return r.json();});
+    tbody.innerHTML = users.map(function(u) {
+      var isSelf = _currentUser && u.email === _currentUser.email;
+      var roleBadge = '<span class="role-badge ' + u.role + '">' + u.role + '</span>';
+      var created = u.created_at ? u.created_at.substring(0,10) : "";
+      var deleteBtn = isSelf ? '<span style="color:var(--text-hint);font-size:11px">current user</span>' :
+        '<button class="btn-sm" style="background:none;color:var(--red);border:1px solid var(--red);font-size:11px;padding:3px 8px" onclick="deleteUser(' + u.id + ',\"' + u.email + '\")">Delete</button>';
+      return '<tr><td style="font-weight:500">' + u.name + '</td><td style="color:var(--text-muted)">' + u.email + '</td><td>' + roleBadge + '</td><td style="color:var(--text-hint)">' + created + '</td><td style="text-align:right">' + deleteBtn + '</td></tr>';
+    }).join("");
+  } catch(e) { tbody.innerHTML = '<tr><td colspan="5" style="color:var(--red)">Failed to load users</td></tr>'; }
+}
+
+async function deleteUser(id, email) {
+  if (!confirm("Delete user " + email + "? This cannot be undone.")) return;
+  try {
+    var r = await fetch(API_PREFIX + "/admin/users/delete", {
+      method: "POST", headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({id: id})
+    });
+    if (r.ok) { loadUsers(); }
+    else { var d = await r.json(); alert(d.detail || "Failed to delete user."); }
+  } catch(e) { alert("Request failed."); }
+}
+
+// --- end user mgmt ---
+refresh();loadApiKeys();loadStats();loadAlertConfig();loadCurrentUser();
+setInterval(refresh,10000);setInterval(loadAlertConfig,30000);setInterval(loadStats,10000);
+setInterval(function(){
+  if(document.getElementById("section-topology").style.display!=="none") drawTopology();
+  if(document.getElementById("section-routing").style.display!=="none"){loadRouting();loadRoutingRules();}
+},10000);
+</script>
+
+<!-- API Key Copy Modal -->
+<div id="apiKeyModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9999;align-items:center;justify-content:center;">
+  <div style="background:var(--card-bg,#1a1f2e);border:1px solid var(--border,#2a3347);border-radius:8px;padding:28px;max-width:480px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,0.5);">
+    <div style="font-size:0.75rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--muted,#718096);margin-bottom:6px;">New API Key</div>
+    <div id="apiKeyModalName" style="font-size:1rem;font-weight:700;color:var(--text,#e2e8f0);margin-bottom:16px;"></div>
+    <div style="font-size:0.8rem;color:var(--muted,#718096);margin-bottom:8px;">Copy this key now — it will not be shown again.</div>
+    <div style="display:flex;gap:8px;margin-bottom:20px;">
+      <input id="apiKeyModalValue" type="text" readonly
+        style="flex:1;background:var(--bg,#0f1117);border:1px solid var(--border,#2a3347);color:var(--text,#e2e8f0);padding:10px 12px;border-radius:6px;font-family:monospace;font-size:0.85rem;"/>
+      <button onclick="copyApiKey()"
+        style="background:#2d7dd2;color:#fff;border:none;border-radius:6px;padding:10px 16px;font-weight:700;cursor:pointer;white-space:nowrap;"
+        id="copyApiKeyBtn">Copy</button>
+    </div>
+    <button onclick="closeApiKeyModal()"
+      style="width:100%;background:var(--bg,#0f1117);border:1px solid var(--border,#2a3347);color:var(--text,#e2e8f0);padding:10px;border-radius:6px;font-weight:600;cursor:pointer;">
+      Done
+    </button>
+  </div>
+</div>
+<script>
+function showApiKeyModal(name, key){
+  document.getElementById("apiKeyModalName").textContent = "Client: " + name;
+  document.getElementById("apiKeyModalValue").value = key;
+  document.getElementById("copyApiKeyBtn").textContent = "Copy";
+  var m = document.getElementById("apiKeyModal");
+  m.style.display = "flex";
+}
+function closeApiKeyModal(){
+  document.getElementById("apiKeyModal").style.display = "none";
+}
+function copyApiKey(){
+  var input = document.getElementById("apiKeyModalValue");
+  input.select();
+  input.setSelectionRange(0, 99999);
+  navigator.clipboard.writeText(input.value).then(function(){
+    document.getElementById("copyApiKeyBtn").textContent = "Copied!";
+    setTimeout(function(){ document.getElementById("copyApiKeyBtn").textContent = "Copy"; }, 2000);
+  }).catch(function(){
+    document.execCommand("copy");
+    document.getElementById("copyApiKeyBtn").textContent = "Copied!";
+    setTimeout(function(){ document.getElementById("copyApiKeyBtn").textContent = "Copy"; }, 2000);
+  });
+}
+// Close on backdrop click
+document.getElementById("apiKeyModal").addEventListener("click", function(e){
+  if(e.target === this) closeApiKeyModal();
+});
+</script>
+
+</body>
+</html>

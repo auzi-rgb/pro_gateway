@@ -1,0 +1,955 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
+  <title>AI Gateway — Live View</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Rajdhani:wght@500;600;700&display=swap');
+
+    :root {
+      --bg:#060a10; --bg2:#0a0f18; --bg3:#0f1520;
+      --border:#1a2540; --border2:#243050;
+      --yellow:#f6e05e; --green:#68d391; --green2:#276749;
+      --blue:#63b3ed; --blue2:#2c5282;
+      --red:#fc8181; --red2:#742a2a;
+      --orange:#f6ad55;
+      --muted:#4a5568; --muted2:#2d3748;
+      --text:#e2e8f0; --text2:#a0aec0;
+      --panel-w:380px; --hdr-h:64px; --leg-h:36px;
+    }
+
+    *, *::before, *::after { box-sizing:border-box; margin:0; padding:0; }
+    html, body {
+      width:100%; height:100%;
+      background:var(--bg); color:var(--text);
+      font-family:'Rajdhani','Segoe UI',sans-serif;
+      overflow:hidden; display:flex; flex-direction:column;
+    }
+
+    /* ── Header ── */
+    header {
+      height:var(--hdr-h); display:flex; align-items:center;
+      justify-content:space-between; padding:0 18px;
+      background:var(--bg2); border-bottom:1px solid var(--border);
+      flex-shrink:0; gap:10px; overflow:hidden;
+    }
+    .hdr-left { display:flex; align-items:center; gap:12px; flex-shrink:0; }
+    .hdr-title {
+      font-family:'Rajdhani',sans-serif;
+      font-size:clamp(1.1rem,2.2vw,1.9rem);
+      font-weight:700; color:var(--blue); letter-spacing:.5px; white-space:nowrap;
+    }
+    .hdr-sub { font-family:'JetBrains Mono',monospace; font-size:.72rem; color:var(--muted); margin-top:1px; white-space:nowrap; }
+    .status-pill {
+      font-family:'JetBrains Mono',monospace; font-size:.8rem;
+      padding:4px 12px; border-radius:3px; font-weight:700;
+      background:#14301f; color:var(--green); border:1px solid var(--green2);
+      letter-spacing:1px; white-space:nowrap; flex-shrink:0;
+    }
+    .status-pill.offline { background:#2a1414; color:var(--red); border-color:var(--red2); }
+    .hdr-stats {
+      display:flex; align-items:center;
+      gap:clamp(12px,2.5vw,32px); flex:1;
+      justify-content:flex-end; overflow:hidden;
+    }
+    .stat-block { text-align:center; flex-shrink:0; }
+    .stat-val {
+      font-family:'JetBrains Mono',monospace;
+      font-size:clamp(1.4rem,2.8vw,2.8rem);
+      font-weight:700; color:var(--yellow); line-height:1;
+    }
+    .stat-label {
+      font-family:'Rajdhani',sans-serif;
+      font-size:clamp(.6rem,1vw,.82rem); color:var(--muted);
+      text-transform:uppercase; letter-spacing:2px; margin-top:1px; white-space:nowrap;
+    }
+    .clock {
+      font-family:'JetBrains Mono',monospace;
+      font-size:clamp(1.1rem,2.2vw,2rem);
+      font-weight:600; color:var(--muted2);
+      font-variant-numeric:tabular-nums; white-space:nowrap; flex-shrink:0;
+    }
+
+    /* ── Main body ── */
+    .main-body { flex:1; display:flex; overflow:hidden; min-height:0; }
+    .diagram-wrap { flex:1; position:relative; overflow:hidden; min-width:0; }
+    #topo-svg { position:absolute; top:0; left:0; width:100%; height:100%; }
+    #dot-layer { position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; overflow:visible; }
+
+    /* ── Toast notifications ── */
+    #toast-container {
+      position:absolute; top:12px; left:50%; transform:translateX(-50%);
+      display:flex; flex-direction:column; gap:6px; z-index:50; pointer-events:none;
+    }
+    .toast {
+      font-family:'JetBrains Mono',monospace; font-size:.78rem; font-weight:600;
+      padding:7px 18px; border-radius:4px; white-space:nowrap;
+      animation:toastIn .3s ease forwards; letter-spacing:.5px;
+    }
+    .toast.info  { background:#0f2a1a; color:var(--green); border:1px solid var(--green2); }
+    .toast.warn  { background:#2a1a0a; color:var(--orange); border:1px solid #744a10; }
+    .toast.error { background:#2a0f0f; color:var(--red); border:1px solid var(--red2); }
+    @keyframes toastIn { from{opacity:0;transform:translateY(-6px)} to{opacity:1;transform:translateY(0)} }
+
+    /* ── Right panel ── */
+    .right-panel {
+      width:var(--panel-w); flex-shrink:0;
+      background:var(--bg2); border-left:1px solid var(--border);
+      display:flex; flex-direction:column; overflow:hidden;
+    }
+    .panel-section-title {
+      font-family:'JetBrains Mono',monospace; font-size:.7rem; color:var(--muted);
+      text-transform:uppercase; letter-spacing:3px;
+      padding:10px 16px 7px; border-bottom:1px solid var(--border); flex-shrink:0;
+    }
+
+    /* ── Node cards ── */
+    .node-cards { flex-shrink:0; overflow-y:auto; max-height:60%; }
+    .node-card { padding:9px 14px; border-bottom:1px solid var(--border); }
+    .node-card-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:3px; }
+    .node-name { font-family:'Rajdhani',sans-serif; font-size:1.05rem; font-weight:700; color:var(--green); }
+    .node-name.down { color:var(--red); }
+    .node-status-dot { font-family:'JetBrains Mono',monospace; font-size:.72rem; font-weight:600; }
+    .node-infer { display:flex; align-items:center; gap:5px; margin-bottom:2px; min-height:14px; }
+    .infer-dot {
+      width:6px; height:6px; border-radius:50%;
+      background:var(--yellow); box-shadow:0 0 5px var(--yellow);
+      animation:pulse 1.2s ease-in-out infinite; flex-shrink:0;
+    }
+    @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.4;transform:scale(1.5)} }
+    .infer-label    { font-family:'JetBrains Mono',monospace; font-size:.72rem; color:var(--yellow); font-weight:600; }
+    .idle-label     { font-family:'JetBrains Mono',monospace; font-size:.72rem; color:var(--muted2); }
+    .node-model-now { font-family:'JetBrains Mono',monospace; font-size:.68rem; color:var(--blue); margin-bottom:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .node-stats-row { display:flex; justify-content:space-between; align-items:center; margin-bottom:2px; }
+    .node-ram-row   { display:flex; justify-content:space-between; align-items:center; margin-bottom:2px; }
+    .node-ram-label { font-family:'JetBrains Mono',monospace; font-size:.68rem; color:var(--muted); }
+    .node-stat-val  { font-family:'JetBrains Mono',monospace; font-size:.68rem; }
+    .node-queued    { font-family:'JetBrains Mono',monospace; font-size:.68rem; color:var(--red); font-weight:700; }
+    .ram-bar-wrap   { background:#111827; border-radius:2px; height:5px; overflow:hidden; margin-bottom:2px; }
+    .ram-bar-fill   { height:100%; border-radius:2px; transition:width .8s ease; }
+    .ram-pct        { font-family:'JetBrains Mono',monospace; font-size:.72rem; font-weight:700; }
+    .models-title   {
+      font-family:'JetBrains Mono',monospace; font-size:.6rem;
+      color:var(--muted2); text-transform:uppercase; letter-spacing:2px;
+      margin-bottom:2px; border-top:1px solid var(--border); padding-top:4px;
+    }
+    .model-chip { font-family:'JetBrains Mono',monospace; font-size:.68rem; color:var(--blue); }
+    .model-chip span { color:var(--muted); }
+
+    /* ── Sparkline ── */
+    .sparkline-wrap  { margin:4px 0 2px; }
+    .sparkline-label { font-family:'JetBrains Mono',monospace; font-size:.58rem; color:var(--muted2); text-transform:uppercase; letter-spacing:1px; margin-bottom:2px; }
+    canvas.spark     { display:block; width:100%; height:26px; }
+
+    /* ── Recent feed ── */
+    .recent-section { flex:1; display:flex; flex-direction:column; overflow:hidden; min-height:0; }
+    .recent-feed    { flex:1; overflow:hidden; position:relative; }
+    .recent-feed-inner { display:flex; flex-direction:column; }
+    .conn-row {
+      padding:8px 14px; border-bottom:1px solid var(--border);
+      display:flex; flex-direction:column; gap:2px; animation:fadeIn .35s ease;
+    }
+    @keyframes fadeIn { from{opacity:0;transform:translateY(-3px)} to{opacity:1;transform:translateY(0)} }
+    .conn-row-top { display:flex; justify-content:space-between; align-items:center; }
+    .conn-client  { font-family:'Rajdhani',sans-serif; font-size:1rem; font-weight:700; color:var(--blue); }
+    .conn-time    { font-family:'JetBrains Mono',monospace; font-size:.7rem; color:var(--muted); }
+    .conn-row-bot { display:flex; align-items:center; gap:4px; flex-wrap:wrap; }
+    .conn-arrow   { font-size:.6rem; color:var(--muted2); }
+    .conn-node    { font-family:'JetBrains Mono',monospace; font-size:.76rem; color:var(--green); }
+    .conn-model   { font-family:'JetBrains Mono',monospace; font-size:.7rem; color:var(--muted); margin-left:auto; }
+    .tier-badge   {
+      font-family:'JetBrains Mono',monospace; font-size:.6rem; font-weight:700;
+      padding:1px 5px; border-radius:2px; letter-spacing:.5px;
+    }
+    .tier-1 { background:#1a2a0a; color:#f6e05e; border:1px solid #3a5a1a; }
+    .tier-2 { background:#0f1a2a; color:#63b3ed; border:1px solid #1a3a5a; }
+    .tier-3 { background:#1a1a2a; color:#a0aec0; border:1px solid #2a2a4a; }
+    .feed-fade {
+      position:absolute; bottom:0; left:0; right:0; height:50px;
+      background:linear-gradient(to bottom,transparent,var(--bg2)); pointer-events:none;
+    }
+
+    /* ── Legend ── */
+    .legend {
+      display:flex; align-items:center; gap:14px; padding:0 16px;
+      height:var(--leg-h); background:var(--bg2); border-top:1px solid var(--border);
+      flex-shrink:0; font-family:'JetBrains Mono',monospace; font-size:.72rem;
+      color:var(--muted); flex-wrap:nowrap; overflow:hidden;
+    }
+    .legend-item { display:flex; align-items:center; gap:4px; white-space:nowrap; flex-shrink:0; }
+    .legend-dot  { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
+
+    /* ── Loading overlay ── */
+    #loading-overlay {
+      position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+      background:var(--bg); z-index:10; transition:opacity .5s ease;
+    }
+    #loading-overlay.hidden { opacity:0; pointer-events:none; }
+    .loading-spinner {
+      font-family:'JetBrains Mono',monospace; font-size:.9rem;
+      color:var(--muted); letter-spacing:2px; animation:blink 1.2s ease-in-out infinite;
+    }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+    /* ── Responsive ── */
+    @media (max-width:700px) {
+      :root { --panel-w:0px; }
+      .right-panel { display:none; }
+      .hdr-sub { display:none; }
+      .legend .legend-item:nth-child(n+4) { display:none; }
+    }
+    @media (max-width:480px) {
+      :root { --hdr-h:52px; }
+      .stat-block:nth-child(n+4) { display:none; }
+      .legend { display:none; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="hdr-left">
+    <div>
+      <div class="hdr-title">&#9889; Georgetown IT &mdash; AI Gateway</div>
+      <div class="hdr-sub">192.168.44.9 &nbsp;&#xB7;&nbsp; Refreshing every 10s</div>
+    </div>
+    <div id="status-pill" class="status-pill">&#9679; ONLINE</div>
+  </div>
+  <div class="hdr-stats">
+    <div class="stat-block">
+      <div class="stat-val" id="hdr-nodes">&#8212;</div>
+      <div class="stat-label">Nodes</div>
+    </div>
+    <div class="stat-block">
+      <div class="stat-val" id="hdr-active" style="color:var(--green)">&#8212;</div>
+      <div class="stat-label">Active</div>
+    </div>
+    <div class="stat-block">
+      <div class="stat-val" id="hdr-rpm" style="color:var(--orange)">&#8212;</div>
+      <div class="stat-label">Req / Min</div>
+    </div>
+    <div class="stat-block">
+      <div class="stat-val" id="hdr-clients" style="color:var(--blue)">&#8212;</div>
+      <div class="stat-label">Clients 24h</div>
+    </div>
+    <div class="stat-block">
+      <div class="stat-val" id="hdr-model" style="color:var(--text2);font-size:clamp(.65rem,1.1vw,.9rem)">&#8212;</div>
+      <div class="stat-label">Default Model</div>
+    </div>
+    <div class="clock" id="clock">&#8212;</div>
+  </div>
+</header>
+
+<div class="main-body">
+  <div class="diagram-wrap" id="diagram-wrap">
+    <svg id="topo-svg" xmlns="http://www.w3.org/2000/svg"></svg>
+    <svg id="dot-layer" xmlns="http://www.w3.org/2000/svg"></svg>
+    <div id="toast-container"></div>
+    <div id="loading-overlay"><div class="loading-spinner">CONNECTING&#8230;</div></div>
+  </div>
+
+  <div class="right-panel">
+    <div class="panel-section-title">AI Nodes</div>
+    <div class="node-cards" id="node-cards"></div>
+    <div class="recent-section">
+      <div class="panel-section-title">Recent Connections</div>
+      <div class="recent-feed" id="recent-feed">
+        <div class="recent-feed-inner" id="recent-feed-inner"></div>
+        <div class="feed-fade"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="legend">
+  <div class="legend-item"><div class="legend-dot" style="background:var(--yellow)"></div>Gateway</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--green)"></div>Node (healthy)</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--orange)"></div>Node (RAM warn)</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--red)"></div>Node (down)</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--blue)"></div>Client &lt;5min</div>
+  <div class="legend-item" style="gap:8px">
+    <span style="color:#f6e05e;font-size:.65rem">T1</span>Priority
+    <span style="color:#63b3ed;font-size:.65rem">T2</span>Standard
+    <span style="color:#a0aec0;font-size:.65rem">T3</span>Economy
+  </div>
+  <span style="margin-left:auto;white-space:nowrap">
+    Line color = RAM pressure &nbsp;&#xB7;&nbsp;
+    <a href="/gateway/dashboard" style="color:var(--muted);text-decoration:none">&#8592; Dashboard</a>
+  </span>
+</div>
+
+<script>
+/* ══════════════════════════════════════════════════════════════
+   CONFIG
+══════════════════════════════════════════════════════════════ */
+var CLIENT_NAMES = {
+  "openwebui":"Open WebUI","hiredesk":"HireDesk","project-hub":"Project Hub",
+  "Markdown Hub":"Markdown Hub","resume-grader":"HireDesk","webapp-01":"webapp-01"
+};
+var WINDOW_SECONDS = 86400;
+
+/* ══════════════════════════════════════════════════════════════
+   STATE
+══════════════════════════════════════════════════════════════ */
+var recentConns    = [];
+var G_clientStats  = {};   // client -> total_requests (24h)
+var G_clientTiers  = {};   // client -> tier  (feature #9)
+var G_prevActive   = {};   // nodeName -> prev active_requests  (feature #5)
+var G_rpmHistory   = [];   // [{ts, count}] for req/min  (feature #2)
+var G_nodeWasHealthy = {};
+var G_layout = { gwX:0, gwY:0, aiPositions:[], clientPositions:[], dotR:9 };
+var dotLayer  = null;
+var firstLoad = true;
+var _kfCache  = {};
+
+/* ══════════════════════════════════════════════════════════════
+   HELPERS
+══════════════════════════════════════════════════════════════ */
+function tsAge(ls) {
+  if (!ls) return Infinity;
+  var ts = ls;
+  if (!ts.endsWith('Z') && !ts.includes('+') && !ts.includes('-',10)) ts += 'Z';
+  return (Date.now() - new Date(ts).getTime()) / 1000;
+}
+function clientColor(ls) {
+  var a = tsAge(ls);
+  if (a < 300)   return '#63b3ed';
+  if (a < 3600)  return '#3a6a8a';
+  if (a < 21600) return '#1a3a4a';
+  return '#111827';
+}
+function clientOpacity(ls) {
+  var a = tsAge(ls);
+  if (a < 300)   return 1.0;
+  if (a < 3600)  return 0.75;
+  if (a < 21600) return 0.50;
+  return 0.30;
+}
+function timeAgo(ls) {
+  if (!ls) return '';
+  var a = tsAge(ls);
+  if (a < 60)    return Math.round(a)+'s ago';
+  if (a < 3600)  return Math.round(a/60)+'m ago';
+  if (a < 86400) return Math.round(a/3600)+'h ago';
+  return '>24h';
+}
+function ramColor(p) {
+  if (p >= 85) return '#fc8181';
+  if (p >= 60) return '#f6ad55';
+  return '#68d391';
+}
+// Feature #8: gateway→node line color based on RAM pressure
+function nodeLineColor(node) {
+  if (!node || !node.healthy) return '#742a2a';
+  var p = node.ram_pct || 0;
+  if (p >= 85) return '#fc8181';
+  if (p >= 60) return '#f6ad55';
+  return '#276749';
+}
+
+/* ══════════════════════════════════════════════════════════════
+   TOASTS — node up/down events + general notifications
+══════════════════════════════════════════════════════════════ */
+function showToast(msg, type, durationMs) {
+  var container = document.getElementById('toast-container');
+  if (!container) return;
+  var el = document.createElement('div');
+  el.className = 'toast '+(type||'info');
+  el.textContent = msg;
+  container.appendChild(el);
+  setTimeout(function() {
+    el.style.transition = 'opacity .4s ease';
+    el.style.opacity = '0';
+    setTimeout(function() { try{el.remove();}catch(e){} }, 450);
+  }, durationMs || 3500);
+}
+
+function checkNodeStateChanges(nodes) {
+  nodes.forEach(function(node) {
+    var was = G_nodeWasHealthy[node.name];
+    if (was === undefined) { G_nodeWasHealthy[node.name] = node.healthy; return; }
+    if (was && !node.healthy) showToast('⚠ '+node.name+' went OFFLINE', 'error', 7000);
+    else if (!was && node.healthy) showToast('✓ '+node.name+' back ONLINE', 'info', 4000);
+    G_nodeWasHealthy[node.name] = node.healthy;
+  });
+}
+
+/* ══════════════════════════════════════════════════════════════
+   FEATURE #5 — COMPLETION FLASH
+   When active count drops on a node, briefly flash the line white
+══════════════════════════════════════════════════════════════ */
+function checkCompletionFlash(aiNodes) {
+  aiNodes.forEach(function(node) {
+    var prev = G_prevActive[node.name];
+    if (prev !== undefined && prev > 0 && node.active_requests < prev) {
+      var ap = G_layout.aiPositions.find(function(p){ return p.node.name === node.name; });
+      if (ap && dotLayer) flashLine(G_layout.gwX, G_layout.gwY, ap.x, ap.y);
+    }
+    G_prevActive[node.name] = node.active_requests;
+  });
+}
+
+function flashLine(x1, y1, x2, y2) {
+  var line = document.createElementNS('http://www.w3.org/2000/svg','line');
+  line.setAttribute('x1',x1); line.setAttribute('y1',y1);
+  line.setAttribute('x2',x2); line.setAttribute('y2',y2);
+  line.setAttribute('stroke','#ffffff');
+  line.setAttribute('stroke-width','3');
+  line.setAttribute('opacity','0.85');
+  line.style.transition = 'opacity .55s ease';
+  dotLayer.appendChild(line);
+  setTimeout(function(){ line.style.opacity='0'; }, 60);
+  setTimeout(function(){ try{line.remove();}catch(e){} }, 700);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   FEATURE #2 — REQUESTS PER MINUTE
+══════════════════════════════════════════════════════════════ */
+function updateRpm(statsData) {
+  var total = 0;
+  (statsData.clients||[]).forEach(function(c){ total += c.total_requests||0; });
+  var now = Date.now();
+  G_rpmHistory.push({ts:now, count:total});
+  G_rpmHistory = G_rpmHistory.filter(function(h){ return now-h.ts < 300000; });
+  var rpm = 0;
+  if (G_rpmHistory.length >= 2) {
+    var oldest = G_rpmHistory[0];
+    var newest = G_rpmHistory[G_rpmHistory.length-1];
+    var deltaMin = (newest.ts - oldest.ts) / 60000;
+    if (deltaMin > 0) rpm = Math.round((newest.count - oldest.count) / deltaMin);
+  }
+  var el = document.getElementById('hdr-rpm');
+  if (el) el.textContent = Math.max(0, rpm);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   FEATURE #6 — SPARKLINES
+   windowData: { "4h":{total:N}, "6h":{total:N}, "12h":{total:N}, "24h":{total:N} }
+   Bars left→right = newest→oldest: 0-4h, 4-6h, 6-12h, 12-24h
+══════════════════════════════════════════════════════════════ */
+function drawSparkline(canvas, windowData) {
+  var w4  = (windowData['4h'] ||{}).total||0;
+  var w6  = (windowData['6h'] ||{}).total||0;
+  var w12 = (windowData['12h']||{}).total||0;
+  var w24 = (windowData['24h']||{}).total||0;
+  var buckets = [w4, Math.max(0,w6-w4), Math.max(0,w12-w6), Math.max(0,w24-w12)];
+  var max = Math.max.apply(null, buckets) || 1;
+  var dpr = window.devicePixelRatio || 1;
+  var W   = canvas.offsetWidth || 200;
+  var H   = canvas.offsetHeight || 26;
+  canvas.width  = W * dpr;
+  canvas.height = H * dpr;
+  var ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  ctx.clearRect(0, 0, W, H);
+  var gap  = 3;
+  var barW = Math.floor((W - gap*(buckets.length-1)) / buckets.length);
+  var colors = ['#63b3ed','#3a7aaa','#1a4a7a','#0f2a4a'];
+  buckets.forEach(function(val, i) {
+    var barH = Math.max(2, Math.round((val/max)*(H-3)));
+    ctx.fillStyle = colors[i];
+    ctx.fillRect(i*(barW+gap), H-barH, barW, barH);
+  });
+}
+
+/* ══════════════════════════════════════════════════════════════
+   NODE CARDS (features #1 active model, #3 avg response time, #6 sparklines)
+══════════════════════════════════════════════════════════════ */
+function renderNodeCards(nodes) {
+  var c = document.getElementById('node-cards');
+  if (!c) return;
+  c.innerHTML = nodes.map(function(node) {
+    var pct    = node.ram_pct || 0;
+    var used   = (node.vram_used_gb||0).toFixed(1);
+    var total  = node.total_ram_gb || 0;
+    var col    = ramColor(pct);
+    var loaded = node.loaded_models || [];
+    var avgMs  = node.avg_duration_ms || 0;
+    var cardId = 'spark-'+node.name.replace(/[^a-z0-9]/gi,'-');
+
+    // Feature #1 — active model names
+    var activeModels = node.active_models || {};
+    var activeNames  = Object.keys(activeModels);
+    var activeModelHtml = '';
+    if (node.active_requests > 0 && activeNames.length) {
+      var modelStr = activeNames.map(function(m){
+        return m.split(':')[0]+(activeModels[m]>1?' \xd7'+activeModels[m]:'');
+      }).join(', ');
+      activeModelHtml = '<div class="node-model-now">\u25b6 '+modelStr+'</div>';
+    }
+
+    var inferHtml = node.active_requests > 0
+      ? '<div class="node-infer"><div class="infer-dot"></div>'
+        +'<span class="infer-label">Inferring '+node.active_requests
+        +' req'+(node.active_requests>1?'s':'')+'</span></div>'
+        +activeModelHtml
+      : '<div class="node-infer"><span class="idle-label">Idle</span></div>';
+
+    // Feature #3 — avg response time, color-coded
+    var avgStr = avgMs > 0
+      ? (avgMs>=1000 ? (avgMs/1000).toFixed(1)+'s' : avgMs+'ms')
+      : '\u2014';
+    var avgCol = avgMs > 10000 ? 'var(--red)' : avgMs > 5000 ? 'var(--orange)' : 'var(--muted)';
+
+    var modelsHtml = loaded.length
+      ? loaded.map(function(m){
+          return '<div class="model-chip">\u25aa '+m.name.split(':')[0]
+            +' <span>('+m.size_gb+'GB)</span></div>';
+        }).join('')
+      : '<div class="model-chip" style="color:var(--muted2)">No models loaded</div>';
+
+    return '<div class="node-card">'
+      +'<div class="node-card-header">'
+        +'<span class="node-name'+(node.healthy?'':' down')+'">'+node.name+'</span>'
+        +'<span class="node-status-dot" style="color:'+(node.healthy?'var(--green)':'var(--red)')+'">'
+          +(node.healthy?'\u25cf Online':'\u25cf Down')+'</span>'
+      +'</div>'
+      +inferHtml
+      +'<div class="node-ram-row">'
+        +'<span class="node-ram-label">'+used+' / '+total+' GB RAM</span>'
+        +(node.queued_requests>0?'<span class="node-queued">'+node.queued_requests+' queued</span>':'')
+      +'</div>'
+      +'<div class="ram-bar-wrap">'
+        +'<div class="ram-bar-fill" style="width:'+Math.min(100,pct)+'%;background:'+col+'"></div>'
+      +'</div>'
+      +'<div class="node-stats-row" style="margin-bottom:4px">'
+        +'<span class="ram-pct" style="color:'+col+'">'+pct+'% RAM</span>'
+        +'<span class="node-stat-val" style="color:'+avgCol+'">avg '+avgStr+'</span>'
+      +'</div>'
+      +'<div class="sparkline-wrap">'
+        +'<div class="sparkline-label">Reqs: 0\u20134h \u00a0 4\u20136h \u00a0 6\u201312h \u00a0 12\u201324h</div>'
+        +'<canvas class="spark" id="'+cardId+'"></canvas>'
+      +'</div>'
+      +'<div class="models-title">In Memory</div>'
+      +modelsHtml
+    +'</div>';
+  }).join('');
+
+  // Draw sparklines after DOM settles
+  requestAnimationFrame(function(){
+    nodes.forEach(function(node){
+      var id = 'spark-'+node.name.replace(/[^a-z0-9]/gi,'-');
+      var cv = document.getElementById(id);
+      if (cv && node.windows) drawSparkline(cv, node.windows);
+    });
+  });
+}
+
+/* ══════════════════════════════════════════════════════════════
+   RECENT FEED — tier badges (feature #9)
+══════════════════════════════════════════════════════════════ */
+function syncRecentConns(data) {
+  var clients = data.clients||[];
+  var aiNodes = data.ai_nodes||[];
+  clients.forEach(function(client){
+    if (!client.last_seen) return;
+    if (tsAge(client.last_seen) > 86400) return;
+    var displayName = CLIENT_NAMES[client.client]
+      ||(client.client!=='anonymous'?client.client:'unknown');
+    var nodeName = client.last_node||(aiNodes[0]?aiNodes[0].name:'unknown');
+    var existing = recentConns.find(function(r){ return r.clientName===displayName; });
+    if (!existing||existing.ts!==client.last_seen) {
+      recentConns = recentConns.filter(function(r){ return r.clientName!==displayName; });
+      recentConns.unshift({
+        clientName:displayName, clientKey:client.client,
+        nodeName:nodeName, model:client.last_model, ts:client.last_seen
+      });
+    }
+  });
+  recentConns.sort(function(a,b){
+    var at=a.ts&&!a.ts.endsWith('Z')?a.ts+'Z':a.ts||'';
+    var bt=b.ts&&!b.ts.endsWith('Z')?b.ts+'Z':b.ts||'';
+    return new Date(bt)-new Date(at);
+  });
+  if (recentConns.length>30) recentConns=recentConns.slice(0,30);
+}
+
+function renderRecentFeed() {
+  var inner = document.getElementById('recent-feed-inner');
+  if (!inner) return;
+  inner.innerHTML = recentConns.map(function(c){
+    var modelShort = c.model?c.model.split(':')[0]:'';
+    var tier = G_clientTiers[c.clientKey];
+    var tierBadge = tier?'<span class="tier-badge tier-'+tier+'">T'+tier+'</span>':'';
+    return '<div class="conn-row">'
+      +'<div class="conn-row-top">'
+        +'<span class="conn-client">'+c.clientName+'</span>'
+        +'<span class="conn-time">'+timeAgo(c.ts)+'</span>'
+      +'</div>'
+      +'<div class="conn-row-bot">'
+        +tierBadge
+        +'<span class="conn-arrow">&#8594;</span>'
+        +'<span class="conn-node">'+c.nodeName+'</span>'
+        +(modelShort?'<span class="conn-model">'+modelShort+'</span>':'')
+      +'</div>'
+    +'</div>';
+  }).join('');
+}
+
+/* ══════════════════════════════════════════════════════════════
+   DOT ANIMATION ENGINE
+══════════════════════════════════════════════════════════════ */
+function animateDot(x1,y1,x2,y2,color,dur,r,delayMs) {
+  if (!dotLayer) return;
+  delayMs=delayMs||0; r=r||8;
+  var kfKey='dot_'+Math.round(x1)+'_'+Math.round(y1)+'_'+Math.round(x2)+'_'+Math.round(y2);
+  if (!_kfCache[kfKey]) {
+    var s=document.createElement('style');
+    s.textContent='@keyframes '+kfKey+'{'
+      +'0%{cx:'+x1+';cy:'+y1+';opacity:0}'
+      +'5%{opacity:0.92}88%{opacity:0.92}'
+      +'100%{cx:'+x2+';cy:'+y2+';opacity:0}'
+    +'}';
+    document.head.appendChild(s);
+    _kfCache[kfKey]=true;
+  }
+  var dot=document.createElementNS('http://www.w3.org/2000/svg','circle');
+  dot.setAttribute('r',String(r));
+  dot.setAttribute('fill',color);
+  dot.setAttribute('cx',String(x1));
+  dot.setAttribute('cy',String(y1));
+  dot.style.cssText='animation:'+kfKey+' '+dur+'s ease-in-out '
+    +(delayMs/1000).toFixed(3)+'s 1 forwards;'
+    +'filter:drop-shadow(0 0 4px '+color+')';
+  dotLayer.appendChild(dot);
+  setTimeout(function(){ try{dot.remove();}catch(e){} }, delayMs+dur*1000+100);
+}
+
+function fireRelay(cp, ap) {
+  var color     = clientColor(cp.client.last_seen);
+  var nodeColor = ap.node.healthy?'#68d391':'#fc8181';
+  var leg1Dur   = 0.55;
+  var leg2Dur   = 0.70;
+  var dotR      = G_layout.dotR;
+  var gwX       = G_layout.gwX;
+  var gwY       = G_layout.gwY;
+  var spacing   = 160;
+  for (var i=0;i<4;i++) animateDot(cp.x,cp.y,gwX,gwY,color,leg1Dur,dotR,i*spacing);
+  var leg2Start = Math.round(leg1Dur*1000)+60;
+  for (var j=0;j<4;j++) animateDot(gwX,gwY,ap.x,ap.y,nodeColor,leg2Dur,dotR,leg2Start+j*spacing);
+}
+
+function globalRelayLoop() {
+  var aiPos  = G_layout.aiPositions;
+  var cliPos = G_layout.clientPositions;
+  if (!dotLayer||!aiPos.length) return;
+  var anyActive = aiPos.some(function(ap){ return ap.node.active_requests>0; });
+  if (anyActive) {
+    var hotClients = cliPos.slice().sort(function(a,b){
+      return tsAge(a.client.last_seen)-tsAge(b.client.last_seen);
+    });
+    var hotClient = hotClients.length?hotClients[0]:null;
+    aiPos.forEach(function(ap){
+      if (ap.node.active_requests<=0) return;
+      var src = cliPos.find(function(cp){ return cp.client.last_node===ap.node.name; })||hotClient;
+      if (!src) return;
+      fireRelay(src, ap);
+    });
+  } else {
+    cliPos.forEach(function(cp){
+      if (tsAge(cp.client.last_seen)>60) return;
+      var targetAp = aiPos.find(function(ap){ return ap.node.name===cp.client.last_node; })
+        ||(aiPos.length?aiPos[0]:null);
+      if (!targetAp) return;
+      fireRelay(cp, targetAp);
+    });
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════
+   DIAGRAM RENDERER
+══════════════════════════════════════════════════════════════ */
+function drawDiagram(data, workload) {
+  var svgEl = document.getElementById('topo-svg');
+  var wrap  = document.getElementById('diagram-wrap');
+  var W = wrap.clientWidth||800;
+  var H = wrap.clientHeight||600;
+  svgEl.setAttribute('viewBox','0 0 '+W+' '+H);
+
+  var aiNodes = data.ai_nodes||[];
+  var clients = data.clients||[];
+
+  // Workload lookup for RAM pressure + active models
+  var wlMap = {};
+  (workload.nodes||[]).forEach(function(n){ wlMap[n.name]=n; });
+
+  var minDim    = Math.min(W,H);
+  var gwR       = Math.max(Math.min(minDim*0.13,108),64);
+  var nodeScale = aiNodes.length<=2?0.86:aiNodes.length===3?0.74:Math.max(0.52,0.86-(aiNodes.length-2)*0.10);
+  var nodeR     = gwR*nodeScale;
+  var clientR   = gwR*0.64;
+  var dotR      = Math.max(7,Math.round(gwR*0.085));
+  var fLarge    = Math.round(nodeR*0.24);
+  var fMed      = Math.round(nodeR*0.18);
+  var fSmall    = Math.round(nodeR*0.15);
+
+  var gwX = Math.round(W*0.46);
+  var gwY = Math.round(H*0.50);
+
+  var aiPositions = aiNodes.map(function(node,i){
+    var yf = aiNodes.length===1?0.50:0.20+(i/(aiNodes.length-1))*0.60;
+    return {x:Math.round(W*0.76), y:Math.round(H*yf), node:node};
+  });
+
+  var cliX = Math.round(W*0.16);
+  var clientPositions = clients.map(function(client,i){
+    var total  = clients.length;
+    var spread = Math.min(H*0.70,150*total);
+    var y = total===1?gwY:Math.round(gwY-spread/2+(spread/Math.max(1,total-1))*i);
+    return {x:cliX, y:y, client:client};
+  });
+
+  G_layout.gwX             = gwX;
+  G_layout.gwY             = gwY;
+  G_layout.aiPositions     = aiPositions;
+  G_layout.clientPositions = clientPositions;
+  G_layout.dotR            = dotR;
+
+  var totalActive = aiNodes.reduce(function(s,n){ return s+n.active_requests; },0);
+
+  var html = '<defs>'
+    +'<filter id="glow" x="-35%" y="-35%" width="170%" height="170%">'
+      +'<feGaussianBlur stdDeviation="4" result="blur"/>'
+      +'<feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>'
+    +'</filter>'
+    +'<filter id="glow-sm" x="-25%" y="-25%" width="150%" height="150%">'
+      +'<feGaussianBlur stdDeviation="2.5" result="blur"/>'
+      +'<feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>'
+    +'</filter>'
+  +'</defs>';
+
+  var headY = Math.round(H*0.065);
+  html+='<text x="'+cliX+'" y="'+headY+'" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="'+(fSmall-1)+'" fill="#1a2744" letter-spacing="3">CLIENTS (24h)</text>';
+  html+='<text x="'+Math.round(W*0.76)+'" y="'+headY+'" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="'+(fSmall-1)+'" fill="#1a3a2a" letter-spacing="3">AI NODES</text>';
+
+  // Client → Gateway lines
+  clientPositions.forEach(function(cp){
+    var isActive = tsAge(cp.client.last_seen)<300;
+    var color    = clientColor(cp.client.last_seen);
+    var opacity  = (clientOpacity(cp.client.last_seen)*0.55).toFixed(2);
+    html+='<line x1="'+cp.x+'" y1="'+cp.y+'" x2="'+gwX+'" y2="'+gwY
+      +'" stroke="'+color+'" stroke-width="'+(isActive?1.5:1)+'" opacity="'+opacity+'"/>';
+  });
+
+  // Gateway → AI node lines — colored by RAM pressure (feature #8)
+  aiPositions.forEach(function(ap){
+    var wl = wlMap[ap.node.name]||{};
+    var lc = nodeLineColor(Object.assign({healthy:ap.node.healthy}, wl));
+    var lw = ap.node.active_requests>0?2.5:1.5;
+    html+='<line x1="'+gwX+'" y1="'+gwY+'" x2="'+ap.x+'" y2="'+ap.y
+      +'" stroke="'+lc+'" stroke-width="'+lw+'" opacity="0.85"/>';
+  });
+
+  // Client circles
+  if (!clients.length) {
+    html+='<text x="'+cliX+'" y="'+gwY+'" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="'+fSmall+'" fill="#1a2744">No connections in last 24h</text>';
+  }
+  clientPositions.forEach(function(cp){
+    var c        = cp.client;
+    var color    = clientColor(c.last_seen);
+    var opacity  = clientOpacity(c.last_seen);
+    var isActive = tsAge(c.last_seen)<300;
+    var name     = CLIENT_NAMES[c.client]||(c.client!=='anonymous'?c.client:'unknown');
+    var ago      = timeAgo(c.last_seen);
+    var tier     = G_clientTiers[c.client];
+    var tierColor= tier===1?'#f6e05e':tier===2?'#63b3ed':'#a0aec0';
+    var cNameSize= Math.round(clientR*0.32);
+
+    html+='<g transform="translate('+cp.x+','+cp.y+')" opacity="'+opacity+'">';
+    html+='<circle cx="0" cy="0" r="'+clientR+'" fill="#0a0e18"'
+      +' stroke="'+color+'" stroke-width="'+Math.round(clientR*0.06)+'"'
+      +(isActive?' filter="url(#glow-sm)"':'')+'/>';
+    // Tier dot — top-right of client circle (feature #9)
+    if (tier) {
+      var bx=Math.round(clientR*0.64), by=-Math.round(clientR*0.64);
+      var br=Math.round(clientR*0.20);
+      html+='<circle cx="'+bx+'" cy="'+by+'" r="'+br+'" fill="'+tierColor+'" opacity="0.92"/>';
+      html+='<text x="'+bx+'" y="'+(by+1)+'" text-anchor="middle" dominant-baseline="central"'
+        +' font-family="JetBrains Mono,monospace" font-size="'+Math.round(clientR*0.17)+'"'
+        +' fill="#060a10" font-weight="700">'+tier+'</text>';
+    }
+    html+='<text x="0" y="'+(-clientR*0.12)+'" text-anchor="middle"'
+      +' font-family="Rajdhani,sans-serif" font-size="'+cNameSize+'"'
+      +' fill="#63b3ed" font-weight="700">'+name+'</text>';
+    html+='<text x="0" y="'+(clientR*0.32)+'" text-anchor="middle"'
+      +' font-family="JetBrains Mono,monospace" font-size="'+fSmall+'"'
+      +' fill="'+(isActive?color:'#2d3748')+'">'+ago+'</text>';
+    html+='</g>';
+  });
+
+  // AI node circles — with queue ring (feature #7) and active model (feature #1)
+  aiPositions.forEach(function(ap){
+    var node     = ap.node;
+    var wl       = wlMap[node.name]||{};
+    var color    = !node.enabled?'#4a5568':node.healthy?'#68d391':'#fc8181';
+    var nameFontSize = Math.round(nodeR*0.30);
+
+    // Feature #1 — active model name on circle
+    var activeModels = wl.active_models||{};
+    var activeNames  = Object.keys(activeModels);
+    var modelLine = '';
+    if (node.active_requests>0 && activeNames.length) {
+      modelLine = activeNames[0].split(':')[0];
+      if (modelLine.length>14) modelLine=modelLine.slice(0,13)+'\u2026';
+    }
+
+    // Feature #7 — spinning dashed red ring when queued
+    if (node.queued_requests>0) {
+      html+='<g transform="translate('+ap.x+','+ap.y+')">'
+        +'<circle cx="0" cy="0" r="'+(nodeR+11)+'" fill="none"'
+          +' stroke="#fc8181" stroke-width="2" stroke-dasharray="8 4" opacity="0.65">'
+          +'<animateTransform attributeName="transform" type="rotate"'
+            +' from="0" to="360" dur="4s" repeatCount="indefinite"/>'
+        +'</circle>'
+      +'</g>';
+    }
+
+    html+='<g transform="translate('+ap.x+','+ap.y+')">';
+    html+='<circle cx="0" cy="0" r="'+nodeR+'" fill="#0c1118"'
+      +' stroke="'+color+'" stroke-width="'+Math.round(nodeR*0.055)+'"'
+      +' filter="url(#glow)"/>';
+    if (node.active_requests>0) {
+      html+='<circle cx="0" cy="0" r="'+(nodeR+4)+'" fill="none"'
+        +' stroke="'+color+'" stroke-width="1.5" opacity="0.22"/>';
+    }
+    // Name
+    var nameY = modelLine ? -nodeR*0.28 : -nodeR*0.12;
+    html+='<text x="0" y="'+nameY+'" text-anchor="middle"'
+      +' font-family="Rajdhani,sans-serif" font-size="'+nameFontSize+'"'
+      +' fill="'+color+'" font-weight="700">'+node.name+'</text>';
+    // Active model (feature #1)
+    if (modelLine) {
+      html+='<text x="0" y="'+(nodeR*0.04)+'" text-anchor="middle"'
+        +' font-family="JetBrains Mono,monospace" font-size="'+fSmall+'"'
+        +' fill="#63b3ed">\u25b6 '+modelLine+'</text>';
+    }
+    // Status
+    var statusY = modelLine ? nodeR*0.26 : nodeR*0.20;
+    html+='<text x="0" y="'+statusY+'" text-anchor="middle"'
+      +' font-family="JetBrains Mono,monospace" font-size="'+fSmall+'"'
+      +' fill="'+color+'" font-weight="600">'
+      +(node.healthy?'\u25cf Healthy':'\u25cf DOWN')+'</text>';
+    // Active/queued count
+    if (node.active_requests>0||node.queued_requests>0) {
+      var reqText = node.active_requests+'/'+node.max_concurrent+' active'
+        +(node.queued_requests>0?' ('+node.queued_requests+' Q)':'');
+      var reqY = modelLine ? nodeR*0.50 : nodeR*0.44;
+      html+='<text x="0" y="'+reqY+'" text-anchor="middle"'
+        +' font-family="JetBrains Mono,monospace" font-size="'+(fSmall-1)+'"'
+        +' fill="#f6e05e" font-weight="700">'+reqText+'</text>';
+    }
+    html+='</g>';
+  });
+
+  // Gateway
+  var gwStroke   = totalActive>0?'#f6e05e':'#4a5568';
+  var gwNameSize = Math.round(gwR*0.28);
+  html+='<g transform="translate('+gwX+','+gwY+')">';
+  html+='<circle cx="0" cy="0" r="'+gwR+'" fill="#0f1117"'
+    +' stroke="'+gwStroke+'" stroke-width="'+Math.round(gwR*0.055)+'"'
+    +' filter="url(#glow)"/>';
+  html+='<text x="0" y="'+(-gwR*0.12)+'" text-anchor="middle"'
+    +' font-family="Rajdhani,sans-serif" font-size="'+gwNameSize+'"'
+    +' fill="#f6e05e" font-weight="700">AI Gateway</text>';
+  if (totalActive>0) {
+    html+='<text x="0" y="'+(gwR*0.26)+'" text-anchor="middle"'
+      +' font-family="JetBrains Mono,monospace" font-size="'+fSmall+'"'
+      +' fill="#f6e05e" font-weight="700">'+totalActive+' active</text>';
+  } else {
+    html+='<text x="0" y="'+(gwR*0.26)+'" text-anchor="middle"'
+      +' font-family="JetBrains Mono,monospace" font-size="'+fSmall+'"'
+      +' fill="#4a5568">\u25cf online</text>';
+  }
+  html+='</g>';
+  svgEl.innerHTML=html;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   DATA REFRESH
+══════════════════════════════════════════════════════════════ */
+async function refresh() {
+  try {
+    var [data, status, workload] = await Promise.all([
+      fetch('/gateway/admin/topology?window='+WINDOW_SECONDS).then(function(r){
+        if(!r.ok) throw new Error('topology '+r.status); return r.json();
+      }),
+      fetch('/gateway/admin/status').then(function(r){
+        if(!r.ok) throw new Error('status '+r.status); return r.json();
+      }),
+      fetch('/gateway/admin/workload').then(function(r){
+        if(!r.ok) throw new Error('workload '+r.status); return r.json();
+      })
+    ]);
+
+    // Stats (non-fatal)
+    var statsData = {clients:[]};
+    try {
+      statsData = await fetch('/gateway/admin/stats?window=24h').then(function(r){ return r.json(); });
+      G_clientStats={};
+      (statsData.clients||[]).forEach(function(s){ G_clientStats[s.client]=s.total_requests; });
+    } catch(e){}
+
+    // API keys for tiers — non-fatal (feature #9)
+    try {
+      var keysData = await fetch('/gateway/admin/clients').then(function(r){ return r.json(); });
+      G_clientTiers={};
+      (keysData.clients||[]).forEach(function(k){ G_clientTiers[k.name]=k.tier; });
+    } catch(e){}
+
+    // Feature #2 — RPM
+    updateRpm(statsData);
+
+    // Header
+    document.getElementById('hdr-nodes').textContent   = status.healthy_nodes+'/'+status.node_count;
+    document.getElementById('hdr-model').textContent   = status.default_model||'\u2014';
+    document.getElementById('hdr-clients').textContent = (data.clients||[]).length;
+    var totalActive=(data.ai_nodes||[]).reduce(function(s,n){ return s+n.active_requests; },0);
+    document.getElementById('hdr-active').textContent  = totalActive;
+
+    var pill=document.getElementById('status-pill');
+    pill.textContent='\u25cf ONLINE'; pill.className='status-pill';
+
+    // State change toasts + completion flash
+    checkNodeStateChanges(workload.nodes||[]);
+    checkCompletionFlash(data.ai_nodes||[]);
+
+    renderNodeCards(workload.nodes||[]);
+    syncRecentConns(data);
+    renderRecentFeed();
+    drawDiagram(data, workload);
+    globalRelayLoop();
+
+    if (firstLoad) {
+      firstLoad=false;
+      var ov=document.getElementById('loading-overlay');
+      if (ov) ov.classList.add('hidden');
+    }
+  } catch(e) {
+    var pill=document.getElementById('status-pill');
+    if (pill){ pill.textContent='\u25cf OFFLINE'; pill.className='status-pill offline'; }
+    console.error('Refresh error:',e);
+  }
+}
+
+function updateClock() {
+  var el=document.getElementById('clock');
+  if (el) el.textContent=new Date().toLocaleTimeString();
+}
+
+var resizeTimer;
+window.addEventListener('resize',function(){
+  clearTimeout(resizeTimer);
+  resizeTimer=setTimeout(refresh,220);
+});
+
+dotLayer=document.getElementById('dot-layer');
+refresh();
+updateClock();
+setInterval(refresh,         10000);
+setInterval(updateClock,      1000);
+setInterval(renderRecentFeed, 5000);
+setInterval(globalRelayLoop,  3000);
+</script>
+</body>
+</html>

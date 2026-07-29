@@ -1,0 +1,9 @@
+config.json
+config.json.bak-*
+main.py.bak-*
+*.bak
+*.bak.*
+*.db
+__pycache__/
+*.pyc
+logs/
