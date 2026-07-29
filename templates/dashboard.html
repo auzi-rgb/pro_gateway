@@ -259,48 +259,43 @@
   <div class="card full-width">
     <div class="card-header"><span class="card-title">Configuration</span></div>
     <div class="card-body">
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px">
-        <div>
-          <div class="config-row">
-            <span class="config-label">Default model</span>
-            <div style="display:flex;align-items:center;gap:8px">
-              <span class="model-pill" id="default-model-pill">&#8212;</span>
-              <button class="change-link" onclick="var r=document.getElementById('model-change-row');r.style.display=r.style.display==='none'?'flex':'none'">change</button>
-            </div>
-          </div>
-          <div id="model-change-row" style="display:none;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--gray-100)">
-            <select id="model-select" style="flex:1"></select>
-            <button class="btn btn-red btn-sm" onclick="saveDefaultModel()">Save</button>
-          </div>
-          <div class="config-row">
-            <span class="config-label">API key enforcement</span>
-            <div style="display:flex;align-items:center;gap:8px">
-              <label class="toggle"><input type="checkbox" id="require-key-toggle" onchange="toggleRequireKey(this.checked)"><span class="toggle-slider"></span></label>
-              <span id="require-key-label" class="enforced-label">Loading...</span>
-            </div>
+      <div>
+        <div class="config-row">
+          <span class="config-label">Default model</span>
+          <div style="display:flex;align-items:center;gap:8px">
+            <span class="model-pill" id="default-model-pill">&#8212;</span>
+            <button class="change-link" onclick="var r=document.getElementById('model-change-row');r.style.display=r.style.display==='none'?'flex':'none'">change</button>
           </div>
         </div>
-        <div>
-          <div style="font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--text-hint);margin-bottom:8px">Generate New Key</div>
-          <div class="add-key-row">
-            <input id="new-key-name" type="text" placeholder="Client name" style="flex:2;width:auto">
-            <select id="new-key-tier" style="flex:1;width:auto">
-              <option value="1">T1 &mdash; Priority</option>
-              <option value="2" selected>T2 &mdash; Standard</option>
-              <option value="3">T3 &mdash; Economy</option>
-            </select>
-            <button class="btn btn-red btn-sm" onclick="addApiKey()">Generate</button>
-          </div>
-          <div style="margin-top:8px;font-size:11px;color:var(--text-hint);line-height:1.5">
-            <span style="color:var(--red);font-weight:600">T1</span> GB10 only, 60s &nbsp;|&nbsp;
-            <span style="color:#2b5faa;font-weight:600">T2</span> GB10 &rarr; node-01 &nbsp;|&nbsp;
-            <span style="color:var(--green);font-weight:600">T3</span> node-01 &rarr; GB10
+        <div id="model-change-row" style="display:none;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--gray-100)">
+          <select id="model-select" style="flex:1"></select>
+          <button class="btn btn-red btn-sm" onclick="saveDefaultModel()">Save</button>
+        </div>
+        <div class="config-row">
+          <span class="config-label">API key enforcement</span>
+          <div style="display:flex;align-items:center;gap:8px">
+            <label class="toggle"><input type="checkbox" id="require-key-toggle" onchange="toggleRequireKey(this.checked)"><span class="toggle-slider"></span></label>
+            <span id="require-key-label" class="enforced-label">Loading...</span>
           </div>
         </div>
       </div>
       <div style="border-top:1px solid var(--border);margin-top:14px;padding-top:14px">
         <div id="api-keys-list">Loading...</div>
       </div>
+    </div>
+  </div>
+
+  <!-- Client API Keys (v2 hashed key store — class/weight/capability) -->
+  <div class="card full-width admin-only" style="display:none">
+    <div class="card-header" style="display:flex;align-items:center;justify-content:space-between">
+      <span class="card-title">Client API Keys</span>
+      <button class="btn-sm" onclick="openCreateKeyModal()">+ Add Key</button>
+    </div>
+    <div style="padding:12px 14px">
+      <table class="key-table">
+        <thead><tr><th>Client</th><th>Allowed Classes</th><th>Priority</th><th>Model</th><th></th><th></th></tr></thead>
+        <tbody id="admin-keys-tbody"><tr><td colspan="6" style="color:var(--text-hint);padding:14px">Loading...</td></tr></tbody>
+      </table>
     </div>
   </div>
 
@@ -489,7 +484,7 @@ function showTab(tab){
   document.getElementById("section-topology").style.display=tab==="topology"?"":"none";
   document.getElementById("section-routing").style.display=tab==="routing"?"":"none";
   document.getElementById("section-settings").style.display=tab==="settings"?"":"none";
-  if(tab==="settings"){loadUsers();loadAdminKeys();}
+  if(tab==="settings") loadUsers();
   ["dashboard","topology","routing","settings"].forEach(function(t){
     var el=document.getElementById("tab-"+t);
     if(el) el.className="tab-btn"+(tab===t?" active":"");
@@ -1126,20 +1121,6 @@ document.addEventListener("keydown",function(e){if(e.key==="Escape")closeNodeMod
         </table>
       </div>
     </div>
-
-    <!-- Client API Keys (v2 hashed key store — class/weight/capability) -->
-    <div class="card" style="grid-column:1/-1">
-      <div class="card-header" style="display:flex;align-items:center;justify-content:space-between">
-        <span class="card-title">Client API Keys</span>
-        <button class="btn-sm" onclick="openCreateKeyModal()">+ Add Key</button>
-      </div>
-      <div style="padding:12px 14px">
-        <table class="key-table">
-          <thead><tr><th>Client</th><th>Allowed Classes</th><th>Priority</th><th>Model</th><th></th><th></th></tr></thead>
-          <tbody id="admin-keys-tbody"><tr><td colspan="6" style="color:var(--text-hint);padding:14px">Loading...</td></tr></tbody>
-        </table>
-      </div>
-    </div>
   </div>
 </div>
 
@@ -1302,7 +1283,7 @@ async function deleteUser(id, email) {
 }
 
 // --- end user mgmt ---
-refresh();loadApiKeys();loadStats();loadAlertConfig();loadCurrentUser();
+refresh();loadApiKeys();loadAdminKeys();loadStats();loadAlertConfig();loadCurrentUser();
 setInterval(refresh,10000);setInterval(loadAlertConfig,30000);setInterval(loadStats,10000);
 setInterval(function(){
   if(document.getElementById("section-topology").style.display!=="none") drawTopology();
