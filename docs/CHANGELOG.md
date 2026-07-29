@@ -13,6 +13,30 @@ handoff record.
 
 ---
 
+## 2026-07-29 — `check_api_key` rewired onto the key store
+
+### Lesson — activation without a hard cutover
+- **Tried:** the original plan (see 2026-07-27 entry, §2c) called activation and
+  the key migration (§2f) the *same* event — a hard swap, because with an empty
+  `keys.db` every request would otherwise lock out.
+- **Problem:** doing both at once means the wiring itself can't be verified live
+  under real traffic before the point of no return — the riskiest change on the
+  auth hot path would ship with no live signal until keys are already reissued.
+- **Changed to:** `check_api_key` now delegates to `gwauth.authenticate()`
+  (`gwauth.py`), which falls back to the exact legacy env/config lookup whenever
+  `keys.db` is empty — same status codes, so existing traffic is unaffected —
+  but logs a CRITICAL once and a WARNING per request until the store is
+  populated. This decouples wiring (done now) from cutover (§2f, still to come):
+  the empty-keystore fallback is the seam between them.
+- **Verified:** deployed via `patch_main_gwauth.py` (guarded: backup, exact-anchor
+  match, compile-gated). Restart succeeded, all 4 nodes came up clean. curl smoke
+  tests confirmed 401 (no key), 403 (invalid key), and the CRITICAL
+  empty-keystore log line all fired exactly as expected. Real traffic continues
+  authenticating via the legacy fallback since `keys.db` is still empty.
+- -> `04-remaining-work.md` §2c, §2f.
+
+---
+
 ## 2026-07-27 — admission control + key store foundation
 
 ### Added — admission control (`admission.py`) — LIVE

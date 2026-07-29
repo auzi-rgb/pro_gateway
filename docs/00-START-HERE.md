@@ -11,9 +11,10 @@ older handoff README.
 can be purchased. The gateway and nodes are a pilot not yet fully endorsed by IT
 management.
 **Current phase:** v2 async path + admission control **built and verified live**.
-The hashed key store is **built and tested but not activated** — activating it is
-the cutover. Next build: rewire `check_api_key` onto the key store (the last
-backend piece; high-risk, auth hot path). See the status ledger and work-in-progress.
+`check_api_key` is now **rewired onto the key store and verified live** (still
+authenticating via the legacy fallback, since `keys.db` is empty). Next build:
+the `/admin/keys*` endpoints, then the cutover (§2f). See the status ledger and
+work-in-progress.
 
 ---
 
@@ -50,8 +51,9 @@ State is one of: **LIVE** (deployed and exercised on the server), **BUILT**
 | Async endpoints | LIVE | `jobs_api.py` (`/api/jobs*`) | 40-case test + live submit/poll |
 | Async dispatcher (class/weight ordering) | LIVE | `dispatcher.py` | 24-case test + live end-to-end job |
 | Admission control (self-healing, live throughput) | LIVE | `admission.py` | 30 + 11 tests + live |
-| Hashed key store (`allowed_classes` set, strict pairing) | BUILT | `keystore.py` | 42-case test + verified on server; NOT activated |
-| `check_api_key` rewiring + admin key endpoints | DESIGNED | (step 2c activation = cutover) | — |
+| Hashed key store (`allowed_classes` set, strict pairing) | LIVE | `keystore.py` | 42-case test; looked up on every request via `gwauth.py`, but `keys.db` still empty |
+| `check_api_key` rewired onto key store (`gwauth.py`) | LIVE | `main.py` `check_api_key` / `gwauth.py` | 4-node restart clean; curl 401/403 + CRITICAL empty-keystore log verified |
+| Admin key endpoints (create/list/revoke/update) | DESIGNED | (§2c, next) | — |
 | Capability aliases (`standard`/`high`) | DESIGNED | column exists in stores | — |
 | Client migration (revoke/reissue) | DESIGNED | (step 2f, cutover) | — |
 | Unify the two dispatch loops | DESIGNED | longer-term | — |
@@ -92,8 +94,10 @@ State is one of: **LIVE** (deployed and exercised on the server), **BUILT**
   carry an `allowed_classes` SET (one app can do multiple kinds of work — e.g.
   HireDesk = `{interactive, throughput}`); weight and capability single per key.
   Strict endpoint/class pairing. SHA-256 not bcrypt (high-entropy keys, hot path).
-  Built (`keystore.py`); activation is the cutover. → `06-operational-notes.md`,
-  `04-remaining-work.md` §2c.
+  Built (`keystore.py`); `check_api_key` rewired onto it live (`gwauth.py`), with
+  an empty-keystore fallback so wiring and cutover are two separate events, not
+  one — the cutover is populating `keys.db` and reissuing keys (§2f).
+  → `06-operational-notes.md`, `04-remaining-work.md` §2c.
 - **Capability aliases over hardcoded model names.** Lets topology change without
   app changes. → `05-architecture.md`, `04-remaining-work.md` §7.
 - **Capacity is measured in sustained tok/s at fixed concurrency under an SLO**,
@@ -187,33 +191,26 @@ State is one of: **LIVE** (deployed and exercised on the server), **BUILT**
 > **When nothing is mid-build, this section reads: "No work in progress; system
 > is in steady state."** Otherwise it names the current piece and where to resume.
 
-**Current:** v2 async path + admission control are complete and live. The hashed
-key store (`keystore.py`, `allowed_classes` set, strict pairing) is built, tested
-(42), and verified on the server — but NOT activated.
+**Current:** v2 async path + admission control are complete and live.
+`check_api_key` is rewired onto the hashed key store (`gwauth.py`, step 2c
+wiring) and **verified live on the server**: restart succeeded on all 4 nodes,
+curl smoke tests confirmed 401 (no key) / 403 (invalid key) / the CRITICAL
+empty-keystore log line, and real traffic is still authenticating fine via the
+legacy fallback since `keys.db` is still empty. `endpoint_class_ok` is not yet
+enforced anywhere — no request has been rejected for a class mismatch.
 
-**Next build: rewire `check_api_key` onto the key store (step 2c activation).**
-This is the last backend piece and the HIGHEST-RISK one — it is on the auth hot
-path (every request, including live `/api/chat`), so a bug is a total lockout, not
-a quiet failure. Do it in a FRESH session, at full attention, ideally on the
-cutover window.
+**Next build: the `/admin/keys*` endpoints** (create/list/revoke/update) — the
+last piece before the cutover can happen. These are what the cutover reissue and
+the future Settings UI will call.
 
-Plan (agreed):
-- Build the new `check_api_key` in isolation with a test harness; it hashes the
-  bearer token, looks up `keystore`, returns `allowed_classes` + weight +
-  capability, and enforces `endpoint_class_ok` in the `/api/chat` and `/api/jobs*`
-  handlers (strict pairing from day one).
-- **Option 3 swap:** hard replacement of the old env/config key path, with an
-  empty-keystore safety net (loud error / one-time fallback instead of silent
-  lockout) and rollback via the `main.py` backup.
-- Add admin key endpoints (create/list/revoke/update) — used by the cutover
-  reissue and the future Settings UI.
-- **Activation = cutover:** because it is a clean replacement, the moment it goes
-  live all old keys stop working. So activation and the key migration (§2f) are
-  the same event — done on the planned outage day, keys reissued with correct
-  `allowed_classes`/weight/capability (HireDesk = `{interactive, throughput}`,
-  weight normal, capability high).
+**§2f (the cutover) is the next human-run event, not a build task:** once the
+admin endpoints exist, revoke all old keys and reissue with correct
+`allowed_classes`/weight/capability (HireDesk = `{interactive, throughput}`,
+weight normal, capability high) on a planned outage window — the moment real
+keys land in `keys.db`, the legacy fallback stops being exercised and old
+env/config keys stop working.
 
 Spec: `04-remaining-work.md` §2c, `06-operational-notes.md` (key decision),
-`keystore.py` header. After this: cutover (§2f), then the big UI update (Settings
+`keystore.py`/`gwauth.py` headers. After the cutover: the big UI update (Settings
 page first), then client app updates + the integration guide (must include the
 class-declaration spec for mixed apps).

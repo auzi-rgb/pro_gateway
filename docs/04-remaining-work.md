@@ -29,6 +29,11 @@ the history reads). Remaining work follows, ordered roughly by dependency.
   rule; deliberately NOT hand-written into config.json.
 - **2c foundation. Hashed key store** (`keystore.py`) — BUILT + tested (42),
   verified on server, NOT yet activated (activation = cutover; see §2c below).
+- **2c wiring. `check_api_key` rewired onto the key store** (`gwauth.py`) —
+  LIVE 2026-07-29. Restart clean on all 4 nodes; curl smoke tests confirmed 401
+  (no key), 403 (invalid key), and the CRITICAL empty-keystore log line. Real
+  traffic still authenticates via the legacy fallback since `keys.db` is empty —
+  wiring is live but the cutover (§2f) has not happened yet. See §2c below.
 
 The synchronous `/api/chat` path was not modified; production traffic was
 undisturbed.
@@ -69,11 +74,15 @@ to `/api/jobs` rather than the sync endpoints.)
 
 ## 2. Gateway v2 — remaining pieces
 
-### 2c. Hashed key store with allowed-class sets + weight
+### 2c. Hashed key store with allowed-class sets + weight — CLOSED
 
-**Foundation BUILT and tested (`keystore.py`, 42 tests), not yet activated.**
-Activation is the cutover (see below) — it replaces `check_api_key` on the auth
-hot path, so it is a clean hard-swap done on outage day, not mid-week.
+**Foundation BUILT and tested (`keystore.py`, 42 tests). `check_api_key` is now
+rewired onto it (`gwauth.py`) and verified LIVE 2026-07-29** — restart clean on
+all 4 nodes, curl confirmed 401/403/CRITICAL-empty-keystore. The empty-keystore
+fallback means this wiring did NOT double as the cutover: real traffic is still
+authenticating via the legacy env/config path since `keys.db` is empty. The
+cutover — populating `keys.db` and reissuing keys — is §2f, a separate, still
+human-run event (see below).
 
 Key model (revised from the original single-class design):
 
@@ -104,17 +113,18 @@ Key model (revised from the original single-class design):
   prompt for mixed apps. Lying cannot gain cross-client priority (weight is fixed
   on the key), so a mis-declared class only reorders the app's own work.
 
-**Still to build for 2c (the activation piece, for cutover, HIGH RISK — auth hot
-path):**
-- Rewire `check_api_key` to look up the keystore (hash the bearer token, match),
-  returning `allowed_classes` + weight + capability instead of `tier`. Build in
-  isolation, test hard, then guarded swap. **Option 3 chosen:** hard swap with an
-  empty-keystore safety net (loud error / one-time fallback rather than silent
-  total lockout) and easy rollback via the `main.py` backup.
-- Enforce `endpoint_class_ok` in the `/api/chat` and `/api/jobs*` handlers.
+**Done for 2c:**
+- ~~Rewire `check_api_key` to look up the keystore~~ — LIVE (`gwauth.py`).
+  **Option 3 chosen:** hard swap with an empty-keystore safety net (loud error /
+  one-time fallback rather than silent total lockout) and easy rollback via the
+  `main.py` backup. Confirmed on server.
+
+**Still to build (before §2f can happen):**
+- Enforce `endpoint_class_ok` in the `/api/chat` and `/api/jobs*` handlers — not
+  yet called anywhere.
 - Admin key-management endpoints: create (returns secret once), list (prefix +
   metadata, never the secret), revoke, update. These are what the future
-  Settings UI and the cutover reissue will call.
+  Settings UI and the cutover reissue will call. **This is the next build.**
 
 ### 2d. Admission control (NEXT)
 Reject jobs at arrival when they cannot be served in time.
@@ -127,10 +137,15 @@ Reject jobs at arrival when they cannot be served in time.
 - Record every rejection with reason (`mark_rejected` already exists); surface on
   the dashboard.
 
-### 2f. Key migration (cutover)
-Revoke all, reissue with class + weight per the mapping in
-`03-gateway-v2-design.md`. Remember env-var keys need removing from
-`.env`/compose too.
+### 2f. Key migration (cutover) — NEXT HUMAN-RUN EVENT
+
+With `check_api_key` already rewired onto the key store (2c, live), this is now
+the only remaining step to full v2 auth: revoke all, reissue with class + weight
+per the mapping in `03-gateway-v2-design.md`. Remember env-var keys need
+removing from `.env`/compose too. Run once the admin key endpoints (2c) exist
+and `endpoint_class_ok` is enforced, on a planned outage window — the moment
+real keys land in `keys.db`, the legacy fallback stops being exercised and old
+env/config keys stop working.
 
 ---
 
