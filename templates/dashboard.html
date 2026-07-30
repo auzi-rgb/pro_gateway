@@ -1283,7 +1283,7 @@ async function deleteUser(id, email) {
 }
 
 // --- end user mgmt ---
-refresh();loadApiKeys();loadAdminKeys();loadStats();loadAlertConfig();loadCurrentUser();
+refresh();loadApiKeys();loadStats();loadAlertConfig();loadCurrentUser();
 setInterval(refresh,10000);setInterval(loadAlertConfig,30000);setInterval(loadStats,10000);
 setInterval(function(){
   if(document.getElementById("section-topology").style.display!=="none") drawTopology();
@@ -1600,6 +1600,8 @@ async function revokeAdminKey(client){
     else{var d=await r.json();showToast(d.detail||"Failed to revoke key.",true);}
   }catch(e){showToast("Request failed.",true);}
 }
+
+loadAdminKeys();
 </script>
 
 </body>
