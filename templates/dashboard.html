@@ -854,6 +854,10 @@ async function drawTopology(){
       return{x:cliX,y:y,client:client};
     });
 
+    _topoPositions={};
+    aiPositions.forEach(function(ap,i){_topoPositions["ai-"+i]={x:ap.x,y:ap.y};});
+    clientPositions.forEach(function(cp,i){_topoPositions["cli-"+i]={x:cp.x,y:cp.y};});
+
     function cliColor(ls){if(!ls)return"#ccc";var a=(Date.now()-new Date(ls+"Z").getTime())/1000;if(a<300)return"#2b5faa";if(a<3600)return"#6a90c8";if(a<21600)return"#9ab0c8";return"#ccc";}
     function cliOpacity(ls){if(!ls)return 0.3;var a=(Date.now()-new Date(ls+"Z").getTime())/1000;if(a<300)return 1;if(a<3600)return 0.75;if(a<21600)return 0.5;return 0.3;}
     function timeAgo(ls){if(!ls)return"";var a=(Date.now()-new Date(ls+"Z").getTime())/1000;if(a<60)return Math.round(a)+"s ago";if(a<3600)return Math.round(a/60)+"m ago";return Math.round(a/3600)+"h ago";}
