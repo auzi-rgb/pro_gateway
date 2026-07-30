@@ -172,6 +172,42 @@ def main():
     check("seeded source is 'seed'", t2.source() == "seed")
     print(f"       persisted seed after restart: {seeded:.0f} tok/s")
 
+    print("\n[12] class-aware wait estimate: a lower-ranked backlog doesn't delay a higher-ranked arrival")
+    def jc(job_class, num_predict=150):
+        p = {"model": "m", "messages": [{"role": "user", "content": "x"}],
+             "num_predict": num_predict}
+        return {"payload": p, "job_class": job_class}
+
+    # A big throughput-only backlog (3000 tokens pending) sitting in the queue.
+    throughput_backlog = [jc("throughput", 150) for _ in range(20)]
+    check("old class-blind estimate counts the whole backlog (3000/300=10s)",
+          abs(estimate_wait_seconds(throughput_backlog, 0, 300) - 10.0) < 0.01)
+    check("class-aware estimate for an arriving interactive job ignores the throughput backlog (0s)",
+          estimate_wait_seconds(throughput_backlog, 0, 300, job_class="interactive") == 0.0)
+    check("class-aware estimate for an arriving deadline job also ignores the throughput backlog (0s)",
+          estimate_wait_seconds(throughput_backlog, 0, 300, job_class="deadline") == 0.0)
+    check("class-aware estimate for an arriving throughput job still counts the backlog (10s)",
+          abs(estimate_wait_seconds(throughput_backlog, 0, 300, job_class="throughput") - 10.0) < 0.01)
+
+    # Mixed queue: same-rank jobs should still count; lower-rank jobs should not.
+    mixed = [jc("interactive", 150) for _ in range(4)] + [jc("throughput", 150) for _ in range(20)]
+    w_mixed_interactive = estimate_wait_seconds(mixed, 0, 300, job_class="interactive")
+    check("interactive arrival only waits behind other interactive jobs in a mixed queue (600/300=2s)",
+          abs(w_mixed_interactive - 2.0) < 0.01)
+    # A new throughput arrival waits behind EVERYTHING (interactive dispatches ahead of it too).
+    w_mixed_throughput = estimate_wait_seconds(mixed, 0, 300, job_class="throughput")
+    check("throughput arrival waits behind the whole mixed queue (3600/300=12s)",
+          abs(w_mixed_throughput - 12.0) < 0.01)
+
+    print("\n[13] end-to-end: decide() no longer spuriously rejects interactive behind a throughput backlog")
+    cfg2 = {"interactive_max_wait_s": 2.0, "global_queue_ceiling": 500}
+    r = decide("interactive", job()["payload"], throughput_backlog, free_slots=0,
+               throughput_tok_s=300, cfg=cfg2)
+    check("interactive ADMITTED behind a large throughput-only backlog (the bug fix)",
+          r.admit is True)
+    check("interactive's own estimated wait is now ~0, not inflated by the backlog",
+          r.estimated_wait_s == 0.0)
+
     print(f"\n==== {PASS} passed, {FAIL} failed ====")
     return 0 if FAIL == 0 else 1
 

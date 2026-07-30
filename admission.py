@@ -206,6 +206,15 @@ def decide_for_submit(job_class, payload, queued_jobs, free_slots,
 
 # --- Estimators (pure) ------------------------------------------------------
 
+# --- Class-rank mirror (must match dispatcher.py's CLASS_RANK exactly) ------
+# admission.py has no import relationship with dispatcher.py -- dispatcher.py
+# already `import admission`, so importing it back here would be circular.
+# This small, stable vocabulary is duplicated instead, same tradeoff already
+# accepted for VALID_CLASSES/VALID_WEIGHTS between jobs_api.py and keystore.py.
+# Higher number = the dispatcher always runs it first, every tick.
+CLASS_RANK = {"interactive": 3, "deadline": 2, "throughput": 1}
+
+
 def expected_output_tokens(payload, default=DEFAULT_EXPECTED_OUTPUT_TOKENS):
     """
     Best estimate of a job's output length before it runs. Uses num_predict /
@@ -222,26 +231,48 @@ def expected_output_tokens(payload, default=DEFAULT_EXPECTED_OUTPUT_TOKENS):
     return default
 
 
-def pending_output_tokens(queued_jobs, running_count):
+def pending_output_tokens(queued_jobs, running_count, job_class=None):
     """
-    Total output tokens estimated to be ahead of a newly-arriving job: the sum of
-    expected output over everything currently queued. (Running jobs are handled
-    by slot availability, below, not counted here.)
+    Total output tokens estimated to be ahead of a newly-arriving job of
+    `job_class` -- i.e. tokens from queued jobs the dispatcher will actually
+    run BEFORE it. (Running jobs are handled by slot availability, above, not
+    counted here.)
+
+    Matches dispatcher.py's real ordering: interactive always dispatches
+    ahead of deadline, which always dispatches ahead of throughput, every
+    tick (dispatcher.py's CLASS_RANK / _sort_key) -- so only queued jobs at
+    the SAME OR HIGHER class rank than the arriving job can delay it. A
+    throughput backlog never delays a fresh interactive arrival, because the
+    dispatcher fully drains interactive first.
+
+    job_class=None keeps the old class-blind behavior (sum the whole queue).
+    A queued job with no/unknown job_class is treated as if it were at the
+    arriving job's own rank (conservatively counted, not excluded) -- safer
+    than silently under-counting on bad data.
     """
-    return sum(expected_output_tokens(j.get("payload") or {}) for j in queued_jobs)
+    if job_class is None:
+        return sum(expected_output_tokens(j.get("payload") or {}) for j in queued_jobs)
+    threshold = CLASS_RANK.get(job_class, 0)
+    return sum(
+        expected_output_tokens(j.get("payload") or {})
+        for j in queued_jobs
+        if CLASS_RANK.get(j.get("job_class"), threshold) >= threshold
+    )
 
 
-def estimate_wait_seconds(queued_jobs, free_slots, throughput_tok_s):
+def estimate_wait_seconds(queued_jobs, free_slots, throughput_tok_s, job_class=None):
     """
-    Estimated time before a newly-arriving job STARTS generating.
+    Estimated time before a newly-arriving job of `job_class` STARTS
+    generating.
 
-    If a slot is free right now, wait is ~0 — it dispatches next tick. Otherwise
-    it waits behind the queue: the pending output tokens ahead of it, divided by
-    the measured aggregate throughput.
+    If a slot is free right now, wait is ~0 — it dispatches next tick.
+    Otherwise it waits behind only the part of the queue that actually
+    dispatches ahead of it (same-or-higher class rank, see
+    pending_output_tokens), divided by measured aggregate throughput.
     """
     if free_slots > 0:
         return 0.0
-    pending = pending_output_tokens(queued_jobs, 0)
+    pending = pending_output_tokens(queued_jobs, 0, job_class=job_class)
     if throughput_tok_s <= 0:
         throughput_tok_s = THROUGHPUT_FLOOR_TOK_S
     return pending / throughput_tok_s
@@ -290,7 +321,7 @@ def decide(job_class, payload, queued_jobs, free_slots, throughput_tok_s,
             f"queue at global ceiling ({len(queued_jobs)}/{ceiling}); capacity short",
         )
 
-    wait = estimate_wait_seconds(queued_jobs, free_slots, throughput_tok_s)
+    wait = estimate_wait_seconds(queued_jobs, free_slots, throughput_tok_s, job_class=job_class)
 
     if job_class == "interactive":
         if wait > interactive_max_wait:

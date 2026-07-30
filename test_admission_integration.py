@@ -77,17 +77,22 @@ def main():
                                   "class": "interactive"})
     check("interactive admitted when admission disabled", r.status_code == 200)
 
-    print("\n[2] interactive fails fast when no slot and deep queue")
+    print("\n[2] interactive fails fast when no slot and a genuine interactive backlog exists")
     c = build({"enabled": True, "interactive_max_wait_s": 2.0,
                "global_queue_ceiling": 500})
     seed_throughput(300)  # ~300 tok/s
     _free["n"] = 0
-    # Fill the queue with throughput jobs so pending work is high.
+    # Fill the queue with INTERACTIVE jobs -- a throughput backlog no longer
+    # counts toward an interactive arrival's wait estimate (the admission.py
+    # class-rank fix), so this must be same-class backlog to genuinely test
+    # the "wait exceeds target" path. Self-limiting: once the interactive
+    # queue is deep enough to exceed the 2s target, further submissions in
+    # this loop are themselves rejected and never join the queue, so it
+    # naturally stabilizes rather than growing without bound.
     for i in range(20):
         c.post("/api/jobs", json={"model": "m", "num_predict": 150,
                                   "messages": [{"role":"u","content":str(i)}],
-                                  "class": "throughput"})
-    # 20 * 150 = 3000 tokens pending / 300 = 10s wait > 2s target -> reject
+                                  "class": "interactive"})
     r = c.post("/api/jobs", json={"model": "m", "num_predict": 150,
                                   "messages": [{"role":"u","content":"chat"}],
                                   "class": "interactive"})
@@ -106,11 +111,16 @@ def main():
     c = build({"enabled": True, "global_queue_ceiling": 500})
     seed_throughput(300)
     _free["n"] = 0
+    # Fill with DEADLINE-class filler (generous deadline_ms so they admit
+    # easily) -- a throughput backlog no longer counts toward a deadline
+    # arrival's wait estimate either (same class-rank fix as above), so this
+    # must be same-or-higher-rank backlog to genuinely test the "unmeetable"
+    # path.
     for i in range(20):
         c.post("/api/jobs", json={"model": "m", "num_predict": 150,
                                   "messages": [{"role":"u","content":str(i)}],
-                                  "class": "throughput"})
-    # deep queue -> long wait -> tight deadline can't be met
+                                  "class": "deadline", "deadline_ms": 600000})
+    # deep same-rank queue -> long wait -> tight deadline can't be met
     r = c.post("/api/jobs", json={"model": "m", "num_predict": 150,
                                   "messages": [{"role":"u","content":"urgent"}],
                                   "class": "deadline", "deadline_ms": 1000})
@@ -153,6 +163,28 @@ def main():
     # queue currently empty (0 < 3 ceiling) so batch admits
     r = c.post("/api/jobs/batch", json={"class": "throughput", "items": items})
     check("batch admitted under ceiling despite slow items", r.status_code == 200)
+
+    print("\n[9] deadline batch REJECTED when unmeetable (not silently admitted -- the bug fix)")
+    c = build({"enabled": True, "global_queue_ceiling": 500})
+    seed_throughput(300)
+    _free["n"] = 0
+    # Fill with DEADLINE-class filler (generous deadline_ms so they admit
+    # easily) -- same-rank backlog is what should genuinely delay a new
+    # deadline arrival (see the admission.py class-rank fix above).
+    for i in range(20):
+        c.post("/api/jobs", json={"model": "m", "num_predict": 150,
+                                  "messages": [{"role":"u","content":str(i)}],
+                                  "class": "deadline", "deadline_ms": 600000})
+    # deep same-rank queue -> long wait -> tight deadline can't be met, and this
+    # rejection reason contains "deadline", not "ceiling" -- proves it's honored either way.
+    items = [{"model": "m", "num_predict": 150,
+              "messages": [{"role":"u","content":str(i)}]} for i in range(5)]
+    r = c.post("/api/jobs/batch", json={"class": "deadline", "deadline_ms": 1000,
+                                        "items": items})
+    check("deadline batch REJECTED (503) when unmeetable, not admitted",
+          r.status_code == 503)
+    check("rejection reason explains the deadline shortfall (not just 'ceiling')",
+          "deadline" in r.json()["detail"].lower())
 
     print(f"\n==== {PASS} passed, {FAIL} failed ====")
     return 0 if FAIL == 0 else 1

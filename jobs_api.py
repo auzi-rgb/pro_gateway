@@ -270,13 +270,13 @@ async def submit_batch(request: Request):
 
     meta = _extract_job_meta(body)
 
-    # Admission for a batch: only the global-ceiling check applies. Batches are
-    # throughput-shaped (HireDesk) and throughput is never rejected for slowness;
-    # rejecting individual items would fragment an atomic submission. The ceiling
-    # protects against unbounded queue growth. Checked once against the first
-    # item's class/payload — the ceiling is class-independent anyway.
+    # Admission for a batch: checked once against the batch's declared class and
+    # the first item's payload as a representative shape/size. ANY rejection is
+    # honored and rejects the whole batch atomically -- exactly like a single job
+    # of that class would be rejected. (Batches are NOT guaranteed throughput-only
+    # -- class is caller-declared, same as a single job; see _extract_job_meta.)
     reject = _admission_check(meta["job_class"], items[0], meta["deadline_ms"])
-    if reject and "ceiling" in reject:
+    if reject:
         log.info(f"jobs: REJECTED batch client={client} count={len(items)}: {reject}")
         raise HTTPException(status_code=503, detail=reject)
 
