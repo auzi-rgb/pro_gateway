@@ -275,7 +275,6 @@ TIERS = CONFIG.get("tiers", {
     "2": {"name": "Standard", "description": "GB10 first, node-01 fallback", "preferred_nodes": ["ai-node-GB10", "ai-node-01"], "fallback_nodes": ["ai-node-01"], "timeout_seconds": 30},
     "3": {"name": "Economy", "description": "node-01 first, GB10 fallback", "preferred_nodes": ["ai-node-01", "ai-node-GB10"], "fallback_nodes": ["ai-node-GB10"], "timeout_seconds": 30}
 })
-ROUTING_RULES = CONFIG.get("routing_rules", {"models": {}, "clients": {}})
 ALERT_CONFIG = CONFIG.get("alerts", {
     "enabled": False,
     "email": "",
@@ -785,16 +784,6 @@ def pick_node(model: str = None, client: str = "anonymous", tier: int = 2) -> No
     preferred = tier_cfg["preferred_nodes"]
     fallback  = tier_cfg["fallback_nodes"]
 
-    # Hard routing rules override everything - client rule beats model rule
-    client_rule = ROUTING_RULES.get("clients", {}).get(client)
-    model_rule  = ROUTING_RULES.get("models",  {}).get(target_model)
-    rule_name   = client_rule or model_rule
-    if rule_name:
-        node = get_node_by_name(rule_name)
-        if node and node.enabled and node.healthy:
-            if not target_model or target_model in node.available_models:
-                return node
-
     # Phase 1 - load-balance across all preferred nodes that can run this model
     # If GB10 and node-01 both have slots, pick whichever is less loaded
     node = best_available(preferred, target_model)
@@ -1147,36 +1136,6 @@ async def api_chat(request: Request):
         finally:
             node.active_requests -= 1
         return JSONResponse(content=result, headers={"x-node": node.name})
-
-@app.post("/api/generate")
-async def api_generate(request: Request):
-    client, tier = check_api_key(request)
-    body = await request.json()
-    model = body.get("model") or DEFAULT_MODEL
-    body["model"] = model
-    body["stream"] = False
-    await check_all_nodes(force=False)
-    node = pick_node(model, client, tier)
-    if not node:
-        log_request("/api/generate", model, None, None, 0, 0, False, 503, client, "No available nodes")
-        raise HTTPException(status_code=503, detail="No available nodes for this request")
-    source_ip = request.client.host if request.client else None
-    t_wait_start = time.time()
-    node.queued_requests += 1
-    async with node.semaphore:
-        node.queued_requests -= 1
-        t_start = time.time()
-        wait_time = t_start - t_wait_start
-        log.info(f"Routing /api/generate model={model} client={client} ip={source_ip} -> {node.name}")
-        try:
-            result = await proxy_request(node, "POST", "/api/generate", body, request, model)
-            duration = time.time() - t_start
-            log_request("/api/generate", model, model, node.name, wait_time, duration, True, 200, client, None, source_ip)
-        except Exception as e:
-            duration = time.time() - t_start
-            log_request("/api/generate", model, model, node.name, wait_time, duration, False, 500, client, str(e), source_ip)
-            raise
-    return JSONResponse(content=result)
 
 @app.post("/api/embed")
 async def api_embed(request: Request):
@@ -1670,61 +1629,6 @@ async def admin_stats(request: Request, window: str = "all"):
     response = {"clients": result, "window": window}
     set_cached(f"stats_{window}", response)
     return response
-
-
-
-@app.get("/admin/config/routing-rules")
-async def get_routing_rules(request: Request):
-    require_auth(request)
-    return {
-        "routing_rules": ROUTING_RULES,
-        "available_nodes": [n.name for n in nodes]
-    }
-
-@app.post("/admin/config/routing-rules/model")
-async def set_model_rule(request: Request):
-    require_auth(request, role="admin")
-    global ROUTING_RULES
-    body = await request.json()
-    model = body.get("model", "").strip()
-    node_name = body.get("node", "").strip()
-    if not model:
-        raise HTTPException(status_code=400, detail="Model required")
-    if "models" not in ROUTING_RULES:
-        ROUTING_RULES["models"] = {}
-    if node_name:
-        ROUTING_RULES["models"][model] = node_name
-        log.info(f"Routing rule set: model {model} -> {node_name}")
-    else:
-        ROUTING_RULES["models"].pop(model, None)
-        log.info(f"Routing rule cleared for model {model}")
-    CONFIG["routing_rules"] = ROUTING_RULES
-    with open("/app/config.json", "w") as f:
-        json.dump(CONFIG, f, indent=2)
-    return {"success": True, "routing_rules": ROUTING_RULES}
-
-@app.post("/admin/config/routing-rules/client")
-async def set_client_rule(request: Request):
-    require_auth(request, role="admin")
-    global ROUTING_RULES
-    body = await request.json()
-    client = body.get("client", "").strip()
-    node_name = body.get("node", "").strip()
-    if not client:
-        raise HTTPException(status_code=400, detail="Client required")
-    if "clients" not in ROUTING_RULES:
-        ROUTING_RULES["clients"] = {}
-    if node_name:
-        ROUTING_RULES["clients"][client] = node_name
-        log.info(f"Routing rule set: client {client} -> {node_name}")
-    else:
-        ROUTING_RULES["clients"].pop(client, None)
-        log.info(f"Routing rule cleared for client {client}")
-    CONFIG["routing_rules"] = ROUTING_RULES
-    with open("/app/config.json", "w") as f:
-        json.dump(CONFIG, f, indent=2)
-    return {"success": True, "routing_rules": ROUTING_RULES}
-
 
 
 @app.get("/admin/alerts")

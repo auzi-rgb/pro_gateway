@@ -146,14 +146,6 @@
     .route-algo-card{display:flex;gap:16px;flex-wrap:wrap}
     .route-algo-label{font-size:10px;color:var(--text-hint);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px}
     .route-algo-val{font-size:14px;font-weight:700;color:var(--red)}
-    .rules-col{flex:1;min-width:260px}
-    .rules-divider{width:1px;background:var(--border)}
-    .rule-row{display:flex;align-items:center;gap:6px;margin-bottom:5px;font-size:12px}
-    .rule-arrow{color:var(--text-hint)}
-    .rule-node{color:var(--red);font-weight:600}
-    .rule-clear{background:none;border:none;color:var(--text-hint);cursor:pointer;font-size:13px;padding:0 3px}
-    .add-rule-row{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
-    .add-rule-row select{flex:1;min-width:100px;font-size:12px;padding:4px 6px}
     .modal-stat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px}
     .modal-stat{background:var(--gray-50);border-radius:6px;padding:12px;text-align:center}
     .modal-stat-val{font-size:22px;font-weight:700;line-height:1}
@@ -394,32 +386,6 @@
     </div>
   </div>
   <div class="card full-width">
-    <div class="card-header"><span class="card-title">Routing Rules</span></div>
-    <div class="card-body">
-      <div style="display:flex;gap:24px;flex-wrap:wrap">
-        <div class="rules-col">
-          <div style="font-size:10px;color:var(--text-hint);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">Model Rules</div>
-          <div id="model-rules-list" style="margin-bottom:10px">Loading...</div>
-          <div class="add-rule-row">
-            <select id="rule-model-select"><option value="">Select model...</option></select>
-            <select id="rule-model-node"><option value="">Select node...</option></select>
-            <button class="btn btn-red btn-sm" onclick="addModelRule()">Add</button>
-          </div>
-        </div>
-        <div class="rules-divider"></div>
-        <div class="rules-col">
-          <div style="font-size:10px;color:var(--text-hint);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">Client Rules</div>
-          <div id="client-rules-list" style="margin-bottom:10px">Loading...</div>
-          <div class="add-rule-row">
-            <select id="rule-client-select"><option value="">Select client...</option></select>
-            <select id="rule-client-node"><option value="">Select node...</option></select>
-            <button class="btn btn-red btn-sm" onclick="addClientRule()">Add</button>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-  <div class="card full-width">
     <div class="card-header"><span class="card-title">Node Load</span></div>
     <div class="card-body"><div style="display:grid;grid-template-columns:1fr 1fr;gap:16px" id="route-nodes"><div style="color:var(--text-hint)">Loading...</div></div></div>
   </div>
@@ -478,7 +444,7 @@ function showTab(tab){
     if(el) el.className="tab-btn"+(tab===t?" active":"");
   });
   if(tab==="topology") drawTopology();
-  if(tab==="routing"){loadRouting();loadRoutingRules();}
+  if(tab==="routing") loadRouting();
 }
 
 function showToast(msg,isError){
@@ -606,44 +572,6 @@ async function loadStats(){
   }catch(e){document.getElementById("stats-tbody").innerHTML='<tr><td colspan="5" style="color:var(--red);padding:14px">Failed</td></tr>';}
 }
 
-async function loadRoutingRules(){
-  try{
-    var d=await fetch(API_PREFIX+"/admin/config/routing-rules").then(function(r){return r.json();});
-    var nodeNames=d.available_nodes||[];
-    var modelRules=d.routing_rules.models||{};
-    var clientRules=d.routing_rules.clients||{};
-    var nodeOpts=nodeNames.map(function(n){return '<option value="'+n+'">'+n+'</option>';}).join("");
-    ["rule-model-node","rule-client-node"].forEach(function(id){var sel=document.getElementById(id);if(sel)sel.innerHTML='<option value="">Select node...</option>'+nodeOpts;});
-    var modelSel=document.getElementById("rule-model-select");
-    if(modelSel)modelSel.innerHTML='<option value="">Select model...</option>'+allModels.map(function(m){return '<option value="'+m+'">'+m+'</option>';}).join("");
-    try{var kr=await fetch(API_PREFIX+"/admin/config/keys").then(function(r){return r.json();});var clientSel=document.getElementById("rule-client-select");if(clientSel)clientSel.innerHTML='<option value="">Select client...</option>'+kr.keys.map(function(k){return '<option value="'+k.name+'">'+k.name+'</option>';}).join("");}catch(e){}
-    var modelList=document.getElementById("model-rules-list");
-    var me=Object.entries(modelRules);
-    modelList.innerHTML=!me.length?'<span style="color:var(--text-hint)">No model rules set</span>':
-      me.map(function(e){return '<div class="rule-row"><span>'+e[0]+'</span><span class="rule-arrow">&rarr;</span><span class="rule-node">'+e[1]+'</span><button class="rule-clear" data-model="'+e[0]+'" onclick="clearModelRule(this.dataset.model)">&#215;</button></div>';}).join("");
-    var clientList=document.getElementById("client-rules-list");
-    var ce=Object.entries(clientRules);
-    clientList.innerHTML=!ce.length?'<span style="color:var(--text-hint)">No client rules set</span>':
-      ce.map(function(e){return '<div class="rule-row"><span>'+e[0]+'</span><span class="rule-arrow">&rarr;</span><span class="rule-node">'+e[1]+'</span><button class="rule-clear" data-client="'+e[0]+'" onclick="clearClientRule(this.dataset.client)">&#215;</button></div>';}).join("");
-  }catch(e){console.error("Failed to load routing rules",e);}
-}
-
-async function addModelRule(){
-  var model=document.getElementById("rule-model-select").value,node=document.getElementById("rule-model-node").value;
-  if(!model||!node){showToast("Select both a model and a node",true);return;}
-  try{var r=await fetch(API_PREFIX+"/admin/config/routing-rules/model",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:model,node:node})});var d=await r.json();if(d.success){showToast("Rule set");loadRoutingRules();}}catch(e){showToast("Failed",true);}
-}
-async function clearModelRule(model){
-  try{var r=await fetch(API_PREFIX+"/admin/config/routing-rules/model",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:model,node:""})});var d=await r.json();if(d.success){showToast("Rule cleared");loadRoutingRules();}}catch(e){showToast("Failed",true);}
-}
-async function addClientRule(){
-  var client=document.getElementById("rule-client-select").value,node=document.getElementById("rule-client-node").value;
-  if(!client||!node){showToast("Select both a client and a node",true);return;}
-  try{var r=await fetch(API_PREFIX+"/admin/config/routing-rules/client",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({client:client,node:node})});var d=await r.json();if(d.success){showToast("Rule set");loadRoutingRules();}}catch(e){showToast("Failed",true);}
-}
-async function clearClientRule(client){
-  try{var r=await fetch(API_PREFIX+"/admin/config/routing-rules/client",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({client:client,node:""})});var d=await r.json();if(d.success){showToast("Rule cleared");loadRoutingRules();}}catch(e){showToast("Failed",true);}
-}
 
 async function loadRouting(){
   try{
@@ -1275,7 +1203,7 @@ refresh();loadApiKeys();loadStats();loadAlertConfig();loadCurrentUser();
 setInterval(refresh,10000);setInterval(loadAlertConfig,30000);setInterval(loadStats,10000);
 setInterval(function(){
   if(document.getElementById("section-topology").style.display!=="none") drawTopology();
-  if(document.getElementById("section-routing").style.display!=="none"){loadRouting();loadRoutingRules();}
+  if(document.getElementById("section-routing").style.display!=="none") loadRouting();
 },10000);
 </script>
 
