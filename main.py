@@ -1366,8 +1366,8 @@ async def admin_status(request: Request):
 
 @app.get("/admin/nodes")
 async def admin_nodes(request: Request):
-    await check_all_nodes(force=True)
     require_auth(request)
+    await check_all_nodes(force=True)
     return {
         "nodes": [
             {
@@ -2050,8 +2050,8 @@ async def admin_logs(request: Request, limit: int = 50):
 
 @app.get("/admin/models")
 async def admin_models(request: Request):
-    await check_all_nodes(force=True)
     require_auth(request)
+    await check_all_nodes(force=True)
     model_map = {}
     for node in nodes:
         if node.healthy:
