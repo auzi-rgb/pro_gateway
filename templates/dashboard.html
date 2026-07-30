@@ -223,7 +223,17 @@
 <div class="stat-bar">
   <div class="stat-cell"><div class="stat-label">Healthy Nodes</div><div class="stat-value green" id="ov-nodes">&#8212;</div></div>
   <div class="stat-cell"><div class="stat-label">Active Requests</div><div class="stat-value" id="ov-active">&#8212;</div></div>
-  <div class="stat-cell"><div class="stat-label">Default Model</div><div class="stat-value" id="ov-model" style="font-size:15px;padding-top:5px">&#8212;</div></div>
+  <div class="stat-cell" style="position:relative">
+    <div class="stat-label">Default Model</div>
+    <div class="stat-value" style="font-size:15px;padding-top:5px;display:flex;align-items:center;gap:6px">
+      <span id="ov-model">&#8212;</span>
+      <button onclick="var r=document.getElementById('model-change-row');r.style.display=r.style.display==='none'?'flex':'none'" title="Change default model" aria-label="Change default model" style="background:none;border:none;cursor:pointer;color:var(--text-hint);font-size:13px;padding:2px;line-height:1">&#9998;</button>
+    </div>
+    <div id="model-change-row" style="display:none;position:absolute;top:calc(100% - 6px);left:20px;right:20px;align-items:center;background:var(--surface);border:1px solid var(--border);border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.15);padding:10px;gap:8px;z-index:150">
+      <select id="model-select" style="flex:1"></select>
+      <button class="btn btn-red btn-sm" onclick="saveDefaultModel()">Save</button>
+    </div>
+  </div>
   <div class="stat-cell"><div class="stat-label">Requests (24h)</div><div class="stat-value" id="ov-24h">&#8212;</div></div>
 </div>
 
@@ -256,35 +266,6 @@
     <div class="card-body" id="model-usage-chart"><div style="color:var(--text-hint)">Loading...</div></div>
   </div>
 
-  <div class="card full-width">
-    <div class="card-header"><span class="card-title">Configuration</span></div>
-    <div class="card-body">
-      <div>
-        <div class="config-row">
-          <span class="config-label">Default model</span>
-          <div style="display:flex;align-items:center;gap:8px">
-            <span class="model-pill" id="default-model-pill">&#8212;</span>
-            <button class="change-link" onclick="var r=document.getElementById('model-change-row');r.style.display=r.style.display==='none'?'flex':'none'">change</button>
-          </div>
-        </div>
-        <div id="model-change-row" style="display:none;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--gray-100)">
-          <select id="model-select" style="flex:1"></select>
-          <button class="btn btn-red btn-sm" onclick="saveDefaultModel()">Save</button>
-        </div>
-        <div class="config-row">
-          <span class="config-label">API key enforcement</span>
-          <div style="display:flex;align-items:center;gap:8px">
-            <label class="toggle"><input type="checkbox" id="require-key-toggle" onchange="toggleRequireKey(this.checked)"><span class="toggle-slider"></span></label>
-            <span id="require-key-label" class="enforced-label">Loading...</span>
-          </div>
-        </div>
-      </div>
-      <div style="border-top:1px solid var(--border);margin-top:14px;padding-top:14px">
-        <div id="api-keys-list">Loading...</div>
-      </div>
-    </div>
-  </div>
-
   <!-- Client API Keys (v2 hashed key store — class/weight/capability) -->
   <div class="card full-width admin-only" style="display:none">
     <div class="card-header" style="display:flex;align-items:center;justify-content:space-between">
@@ -292,6 +273,13 @@
       <button class="btn-sm" onclick="openCreateKeyModal()">+ Add Key</button>
     </div>
     <div style="padding:12px 14px">
+      <div class="config-row" style="margin-bottom:8px">
+        <span class="config-label">API key enforcement</span>
+        <div style="display:flex;align-items:center;gap:8px">
+          <label class="toggle"><input type="checkbox" id="require-key-toggle" onchange="toggleRequireKey(this.checked)"><span class="toggle-slider"></span></label>
+          <span id="require-key-label" class="enforced-label">Loading...</span>
+        </div>
+      </div>
       <table class="key-table">
         <thead><tr><th>Client</th><th>Allowed Classes</th><th>Priority</th><th>Model</th><th></th><th></th></tr></thead>
         <tbody id="admin-keys-tbody"><tr><td colspan="6" style="color:var(--text-hint);padding:14px">Loading...</td></tr></tbody>
@@ -560,6 +548,7 @@ async function loadApiKeys(){
     var d=await r.json();
     updateRequireKeyUI(d.require_api_key);
     var list=document.getElementById("api-keys-list");
+    if(!list) return;
     if(!d.keys.length){list.innerHTML='<span style="color:var(--text-hint)">No API keys configured</span>';return;}
     var rows='';
     for(var i=0;i<d.keys.length;i++){
@@ -574,7 +563,7 @@ async function loadApiKeys(){
       rows+='<td><button class="revoke-btn" data-name="'+kn+'" onclick="revokeKey(this.dataset.name)">Revoke</button></td></tr>';
     }
     list.innerHTML='<table class="key-table"><thead><tr><th>Client</th><th>Key</th><th>Tier</th><th>Change Tier</th><th></th></tr></thead><tbody>'+rows+'</tbody></table>';
-  }catch(e){document.getElementById("api-keys-list").innerHTML='<span style="color:var(--red)">Failed to load keys</span>';}
+  }catch(e){var list2=document.getElementById("api-keys-list");if(list2)list2.innerHTML='<span style="color:var(--red)">Failed to load keys</span>';}
 }
 
 async function addApiKey(){
@@ -764,7 +753,6 @@ async function refresh(){
     document.getElementById("ov-nodes").textContent=status.healthy_nodes+" / "+status.node_count;
     document.getElementById("ov-active").textContent=nodesData.nodes.reduce(function(s,n){return s+n.active_requests;},0);
     document.getElementById("ov-model").textContent=defaultModel;
-    document.getElementById("default-model-pill").textContent=defaultModel;
     try{var t24=0;workloadData.nodes.forEach(function(n){if(n.windows&&n.windows["24h"])t24+=n.windows["24h"].total;});document.getElementById("ov-24h").textContent=t24;}catch(e){}
     var sel=document.getElementById("model-select");
     sel.innerHTML=allModels.map(function(m){return '<option value="'+m+'"'+(m===defaultModel?" selected":"")+'>'+m+'</option>';}).join("");
