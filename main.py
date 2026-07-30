@@ -15,6 +15,9 @@ from fastapi.staticfiles import StaticFiles
 import jobs_api
 import dispatcher
 import admission
+import keystore
+import gwauth
+import admin_keys_api
 
 
 def _count_free_slots() -> int:
@@ -254,6 +257,7 @@ _ENV_KEY_MAP = {
 # This supports both the original env-var keys AND keys created via the dashboard
 _config_api_keys = CONFIG.get("api_keys", {})
 API_KEYS = {}
+KEY_STORE = None  # keystore.KeyStore instance; set in startup()
 
 # First load any keys that have full values in config.json (dashboard-created keys)
 for client_name, data in _config_api_keys.items():
@@ -433,6 +437,7 @@ class MaxBodySizeMiddleware(BaseHTTPMiddleware):
 app = FastAPI(title="AI Gateway")
 app.add_middleware(MaxBodySizeMiddleware, max_bytes=10 * 1024 * 1024)
 app.include_router(jobs_api.router)
+app.include_router(admin_keys_api.router)
 app.mount("/static", StaticFiles(directory="/app/static"), name="static")
 GATEWAY_START_TIME = datetime.utcnow().isoformat()
 
@@ -449,6 +454,10 @@ async def startup():
             nodes.append(NodeState(node_cfg))
     log.info(f"Gateway started with {len(nodes)} nodes")
     # --- v2 async job store: recover orphans, start prune loop ---
+    global KEY_STORE
+    KEY_STORE = keystore.KeyStore()
+    gwauth.init(KEY_STORE, require_api_key=REQUIRE_API_KEY, legacy_lookup=get_key_info)
+    admin_keys_api.init(KEY_STORE, require_auth=require_auth)
     jobs_api.init(CONFIG, check_api_key=check_api_key, free_slots_fn=_count_free_slots)
     await jobs_api.start_prune_task()
     admission.init(CONFIG)
@@ -807,19 +816,14 @@ def pick_node(model: str = None, client: str = "anonymous", tier: int = 2) -> No
 
 # --- API key check ---
 def check_api_key(request: Request) -> tuple:
-    """Returns (client_name, tier) if key is valid, or ('anonymous', 2) if keys not required."""
-    auth = request.headers.get("Authorization", "")
-    if auth.startswith("Bearer "):
-        key = auth.removeprefix("Bearer ").strip()
-        info = get_key_info(key)
-        if info:
-            return info["name"], info["tier"]
-        if REQUIRE_API_KEY:
-            raise HTTPException(status_code=403, detail="Invalid API key")
-        return "anonymous", 2
-    if REQUIRE_API_KEY:
-        raise HTTPException(status_code=401, detail="Missing API key")
-    return "anonymous", 2
+    """Returns (client_name, tier). Delegates to gwauth (keystore-backed auth);
+    falls back to the legacy env/config lookup only while keys.db is empty
+    (see gwauth.py's empty-keystore safety net)."""
+    try:
+        rec = gwauth.authenticate(request.headers)
+    except gwauth.AuthError as e:
+        raise HTTPException(status_code=e.status, detail=e.detail)
+    return rec["client"], rec["tier"]
 
 # --- Core proxy functions ---
 async def proxy_request(node: NodeState, method: str, path: str, body: dict = None, original_request: Request = None, model_key: str = None, skip_reserve: bool = False):
@@ -1568,6 +1572,9 @@ async def set_require_api_key(request: Request):
     value = body.get("enabled", False)
     REQUIRE_API_KEY = value
     CONFIG["require_api_key"] = value
+    # gwauth caches REQUIRE_API_KEY at init() time; keep it in sync with the
+    # live toggle above or this dashboard switch silently stops doing anything.
+    gwauth.init(KEY_STORE, require_api_key=REQUIRE_API_KEY, legacy_lookup=get_key_info)
     await save_config()
     log.info(f"require_api_key set to {value}")
     return {"success": True, "require_api_key": REQUIRE_API_KEY}
