@@ -1415,6 +1415,7 @@ async def toggle_node(request: Request):
 @app.get("/admin/scheduler/dispatch")
 async def admin_scheduler_dispatch(request: Request, limit: int = 200):
     """Recent dispatch decisions - who won each slot, at what score, and what they beat."""
+    require_auth(request)
     recent = list(_dispatch_log)[-limit:]
     # Aggregate: per-tier dispatch stats
     agg = {}
