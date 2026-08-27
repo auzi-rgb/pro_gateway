@@ -126,17 +126,6 @@ Key model (revised from the original single-class design):
   metadata, never the secret), revoke, update. These are what the future
   Settings UI and the cutover reissue will call. **This is the next build.**
 
-### 2d. Admission control (NEXT)
-Reject jobs at arrival when they cannot be served in time.
-- Wait estimator: pending output tokens ÷ measured token throughput (track recent
-  completions for the throughput figure rather than hardcoding).
-- `interactive` — reject if estimated wait exceeds its short target (default 2 s).
-- `deadline` — reject if estimated wait + expected generation exceeds the
-  deadline.
-- `throughput` — admit unless the global queue ceiling is hit.
-- Record every rejection with reason (`mark_rejected` already exists); surface on
-  the dashboard.
-
 ### 2f. Key migration (cutover) — NEXT HUMAN-RUN EVENT
 
 With `check_api_key` already rewired onto the key store (2c, live), this is now
@@ -179,6 +168,11 @@ env/config keys stop working.
   setting; every setting visible.
 - **Capacity summary for management** — headline numbers only (what the cluster
   delivers now, what each added node adds). Not a before/after demo.
+- **Surface admission-control rejections on the dashboard** (reason + count per
+  class). Blocked on fixing `jobstore.py`'s currently-unreachable
+  `mark_rejected`/`STATUS_REJECTED` path first — `jobs_api.py` rejects with a
+  bare `HTTPException` before a job row is ever created, so there's nothing to
+  query yet.
 
 ---
 
