@@ -301,7 +301,8 @@ var G_nodeWasHealthy = {};
 var G_layout = { gwX:0, gwY:0, aiPositions:[], clientPositions:[], dotR:9 };
 var dotLayer  = null;
 var firstLoad = true;
-var _kfCache  = {};
+var _kfCache  = new Map();  // kfKey -> <style> element, insertion-ordered for LRU eviction
+var _KF_CACHE_MAX = 150;    // bound style-tag growth on a page meant to run indefinitely
 
 /* ══════════════════════════════════════════════════════════════
    HELPERS
@@ -548,9 +549,9 @@ function syncRecentConns(data) {
     var displayName = CLIENT_NAMES[client.client]
       ||(client.client!=='anonymous'?client.client:'unknown');
     var nodeName = client.last_node||(aiNodes[0]?aiNodes[0].name:'unknown');
-    var existing = recentConns.find(function(r){ return r.clientName===displayName; });
+    var existing = recentConns.find(function(r){ return r.clientKey===client.client; });
     if (!existing||existing.ts!==client.last_seen) {
-      recentConns = recentConns.filter(function(r){ return r.clientName!==displayName; });
+      recentConns = recentConns.filter(function(r){ return r.clientKey!==client.client; });
       recentConns.unshift({
         clientName:displayName, clientKey:client.client,
         nodeName:nodeName, model:client.last_model, ts:client.last_seen
@@ -594,7 +595,12 @@ function animateDot(x1,y1,x2,y2,color,dur,r,delayMs) {
   if (!dotLayer) return;
   delayMs=delayMs||0; r=r||8;
   var kfKey='dot_'+Math.round(x1)+'_'+Math.round(y1)+'_'+Math.round(x2)+'_'+Math.round(y2);
-  if (!_kfCache[kfKey]) {
+  if (!_kfCache.has(kfKey)) {
+    if (_kfCache.size>=_KF_CACHE_MAX) {
+      var oldestKey=_kfCache.keys().next().value;
+      try{_kfCache.get(oldestKey).remove();}catch(e){}
+      _kfCache.delete(oldestKey);
+    }
     var s=document.createElement('style');
     s.textContent='@keyframes '+kfKey+'{'
       +'0%{cx:'+x1+';cy:'+y1+';opacity:0}'
@@ -602,7 +608,7 @@ function animateDot(x1,y1,x2,y2,color,dur,r,delayMs) {
       +'100%{cx:'+x2+';cy:'+y2+';opacity:0}'
     +'}';
     document.head.appendChild(s);
-    _kfCache[kfKey]=true;
+    _kfCache.set(kfKey, s);
   }
   var dot=document.createElementNS('http://www.w3.org/2000/svg','circle');
   dot.setAttribute('r',String(r));
@@ -901,14 +907,18 @@ async function refresh() {
     updateRpm(statsData);
 
     // Header
-    document.getElementById('hdr-nodes').textContent   = status.healthy_nodes+'/'+status.node_count;
-    document.getElementById('hdr-model').textContent   = status.default_model||'\u2014';
-    document.getElementById('hdr-clients').textContent = (data.clients||[]).length;
+    var hdrNodes=document.getElementById('hdr-nodes');
+    if (hdrNodes) hdrNodes.textContent = status.healthy_nodes+'/'+status.node_count;
+    var hdrModel=document.getElementById('hdr-model');
+    if (hdrModel) hdrModel.textContent = status.default_model||'\u2014';
+    var hdrClients=document.getElementById('hdr-clients');
+    if (hdrClients) hdrClients.textContent = (data.clients||[]).length;
     var totalActive=(data.ai_nodes||[]).reduce(function(s,n){ return s+n.active_requests; },0);
-    document.getElementById('hdr-active').textContent  = totalActive;
+    var hdrActive=document.getElementById('hdr-active');
+    if (hdrActive) hdrActive.textContent = totalActive;
 
     var pill=document.getElementById('status-pill');
-    pill.textContent='\u25cf ONLINE'; pill.className='status-pill';
+    if (pill){ pill.textContent='\u25cf ONLINE'; pill.className='status-pill'; }
 
     // State change toasts + completion flash
     checkNodeStateChanges(workload.nodes||[]);
