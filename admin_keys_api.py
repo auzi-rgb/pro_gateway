@@ -111,7 +111,12 @@ async def revoke_key(request: Request, client: str):
     ok = _store.revoke(client)
     if not ok:
         raise HTTPException(status_code=404, detail=f"No key found for {client}")
-    log.info(f"Admin key revoked for client: {client}")
+    if _store.count() == 0:
+        log.critical(
+            f"AUTH: revoking '{client}' emptied the keystore — ALL clients now fall "
+            f"back to legacy env/config auth until a new key is created.")
+    else:
+        log.info(f"Admin key revoked for client: {client}")
     return {"success": True, "client": client}
 
 

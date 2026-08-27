@@ -72,7 +72,7 @@ class AuthError(Exception):
 _store: keystore.KeyStore = None
 _require_api_key = True
 _legacy_lookup = None            # callable(token_str) -> {"name","tier"} | None
-_empty_warned = False            # so the CRITICAL only logs once per empty period
+_last_known_empty = None         # None=not yet observed; else store's emptiness on the last check
 
 
 def init(store, require_api_key=True, legacy_lookup=None):
@@ -82,11 +82,11 @@ def init(store, require_api_key=True, legacy_lookup=None):
     legacy_lookup  : the OLD get_key_info(token) -> {"name","tier"}|None, used
                      ONLY as the empty-keystore safety net.
     """
-    global _store, _require_api_key, _legacy_lookup, _empty_warned
+    global _store, _require_api_key, _legacy_lookup, _last_known_empty
     _store = store
     _require_api_key = require_api_key
     _legacy_lookup = legacy_lookup
-    _empty_warned = False
+    _last_known_empty = None
 
 
 def _extract_bearer(headers) -> str | None:
@@ -110,20 +110,26 @@ def authenticate(headers) -> dict:
     and no/invalid key is given, returns the anonymous record (tier 2), exactly
     as the old function did.
     """
-    global _empty_warned
+    global _last_known_empty
     token = _extract_bearer(headers)
 
     # --- Empty-keystore safety net -----------------------------------------
     # If the store is empty we must NOT lock everyone out. Fall back to the old
-    # env/config lookup, loudly, until keys exist.
+    # env/config lookup, loudly, until keys exist. Logs CRITICAL on the first
+    # empty check ever AND on every populated -> empty transition (e.g. the
+    # last key getting revoked), not just once per process lifetime -- an
+    # admin emptying the store months into the cutover needs the same loud
+    # signal as the original pre-cutover state, since it has the same effect:
+    # every client silently falls back to legacy auth again.
     store_count = _store.count() if _store is not None else 0
     if store_count == 0:
-        if not _empty_warned:
+        if not _last_known_empty:
             log.critical(
                 "AUTH: keystore is EMPTY — falling back to legacy env/config keys. "
                 "This is the pre-cutover safety net; create keystore keys to activate v2 auth.")
-            _empty_warned = True
+        _last_known_empty = True
         return _legacy_authenticate(token)
+    _last_known_empty = False
 
     # --- Normal path: keystore is the single source ------------------------
     if token is None:

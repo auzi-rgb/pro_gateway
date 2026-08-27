@@ -203,6 +203,26 @@ def main():
     gwauth.enforce_endpoint_class(legrec, "interactive", is_async_endpoint=False)  # must not raise
     check("enforce no-ops on legacy record", True)
 
+    # ---------------------------------------------------------------------
+    print("\n[11] CRITICAL alert re-arms on a same-session populated -> empty transition")
+    # Bug #10 (audit): revoking the last key mid-session must re-trigger the
+    # loud empty-keystore signal, not just once ever at process start. Proven
+    # via the internal _last_known_empty latch, which is what gates the
+    # log.critical() call -- same test intent without needing a log capture.
+    ks2 = keystore.KeyStore(db_path=os.path.join(tmp, "keys_test2.db"))
+    gwauth.init(ks2, require_api_key=True, legacy_lookup=legacy)
+    check("fresh init: not yet observed", gwauth._last_known_empty is None)
+    gwauth.authenticate(bearer("LEGACY-OWUI"))
+    check("first check on empty store sets the latch", gwauth._last_known_empty is True)
+    s_tmp = ks2.create("temp-client", ["throughput"], "normal")
+    gwauth.authenticate(bearer(s_tmp))
+    check("populating the store clears the latch", gwauth._last_known_empty is False)
+    ks2.revoke("temp-client")
+    check("store empty again (no re-init in between)", ks2.count() == 0)
+    gwauth.authenticate(bearer("LEGACY-OWUI"))
+    check("SAME-SESSION transition back to empty re-arms the latch (bug #10 fix)",
+          gwauth._last_known_empty is True)
+
     print(f"\n==== {PASS} passed, {FAIL} failed ====")
     return 0 if FAIL == 0 else 1
 
