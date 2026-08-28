@@ -28,6 +28,7 @@ from fastapi import APIRouter, Request, HTTPException
 
 from jobstore import JobStore
 import admission
+from keystore import VALID_CLASSES, VALID_WEIGHTS
 
 log = logging.getLogger("gateway")
 
@@ -45,9 +46,9 @@ def _admission_check(job_class, payload, deadline_ms):
         job_class, payload, queued, free, deadline_ms=deadline_ms)
     return None if result.admit else result.reason
 
-# --- Vocab (kept in sync with 03-gateway-v2-design.md) ----------------------
-VALID_CLASSES = ("interactive", "deadline", "throughput")
-VALID_WEIGHTS = ("critical", "high", "normal", "low")
+# --- Vocab (kept in sync with 03-gateway-v2-design.md) -----------------------
+# VALID_CLASSES/VALID_WEIGHTS defined once in keystore.py; imported here so
+# the two modules can't drift out of sync.
 
 # Defaults for an under-specified job: the safe corner of the matrix. throughput
 # is never rejected for waiting and never jumps the line; normal is app-default.
