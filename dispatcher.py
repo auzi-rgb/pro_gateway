@@ -22,8 +22,10 @@ THE RACE, AND HOW IT IS AVOIDED
 
 ORDERING (this step)
     interactive first, then deadline by earliest deadline_ms, then throughput by
-    weight (desc) then arrival (asc). Aging backstop on throughput only, so a
-    throughput job that has waited too long cannot be starved forever.
+    weight (desc) then arrival (asc). A fixed, bounded reservation (not score
+    aging — see the starvation-guard comment near _low_reserve_every_seconds)
+    guarantees "low"-weight throughput jobs cannot be starved forever without
+    ever letting them out-rank real demand.
 
 WHAT THIS STEP DOES NOT DO
     - No admission control (jobs are never rejected for expected slowness here;
@@ -65,9 +67,18 @@ _running = False
 
 # Tunables (from config "dispatcher" block, with defaults)
 _interval_seconds = 0.1          # how often the loop wakes
-_aging_grace_seconds = 30.0      # throughput waits this long at base priority
-_aging_rate_per_sec = 10.0       # then climbs this fast
 _node_http_timeout = 300.0       # per-inference HTTP timeout to a node
+
+# Starvation guard for "low"-weight throughput jobs (see _sort_key/_dispatch_loop
+# below). NOT score-based aging — a previous scoring-based aging tuning attempt
+# let low-weight jobs eventually out-climb everything, which defeated priority
+# entirely under sustained load. This is a fixed, bounded reservation instead:
+# once every _low_reserve_every_seconds, the single oldest-queued "low" job gets
+# first claim on one freed slot, bypassing weight order. Every other tick runs
+# strict weight order untouched. The floor is structurally capped — there is no
+# score to climb, so "low" can never inflate into out-ranking real demand.
+_low_reserve_every_seconds = 2.0
+_last_low_reserve_at = 0.0
 
 # In-flight accounting: job_id -> node object, so we can release the slot
 # exactly once when the job finishes, matching the chat path's reserve/finally.
@@ -80,19 +91,25 @@ def init(config, store, nodes, free_node_for, default_model):
     Dependency injection (not import) avoids a circular import with main.
     """
     global STORE, _nodes, _free_node_for, _default_model, _cfg
-    global _interval_seconds, _aging_grace_seconds, _aging_rate_per_sec
-    global _node_http_timeout
+    global _interval_seconds, _node_http_timeout, _low_reserve_every_seconds
+    global _last_low_reserve_at
     STORE = store
     _nodes = nodes
     _free_node_for = free_node_for
     _default_model = default_model
     _cfg = config.get("dispatcher", {})
     _interval_seconds = _cfg.get("interval_ms", 100) / 1000.0
-    _aging_grace_seconds = _cfg.get("aging_grace_seconds", 30.0)
-    _aging_rate_per_sec = _cfg.get("aging_rate_per_sec", 10.0)
     _node_http_timeout = _cfg.get("node_http_timeout_seconds", 300.0)
+    _low_reserve_every_seconds = _cfg.get("low_reserve_every_seconds", 2.0)
+    # Reset the cadence baseline to "now" — without this, a fresh process
+    # starts with _last_low_reserve_at at 0 (the epoch), which is always more
+    # than one cadence in the past, so the very first tick would immediately
+    # bypass weight order for "low" before interactive/deadline/critical ever
+    # get a look. The guard must only fire after a full cadence has elapsed
+    # since startup, not before.
+    _last_low_reserve_at = time.time()
     log.info(f"dispatcher: configured interval={_interval_seconds}s "
-             f"aging_grace={_aging_grace_seconds}s rate={_aging_rate_per_sec}")
+             f"low_reserve_every={_low_reserve_every_seconds}s")
 
 
 async def start():
@@ -123,7 +140,11 @@ def _sort_key(job, now):
     """
     Build a sort key so that sorted(reverse=True) yields dispatch order:
     interactive > deadline > throughput; within deadline, earliest first;
-    within throughput, higher weight then earlier arrival, with an aging bump.
+    within throughput, higher weight then earlier arrival (FIFO within a
+    weight tier — "waited" alone is already monotonic with arrival order, no
+    aging term needed for that). Forward progress for "low" under sustained
+    higher-weight load is handled separately in _dispatch_loop's fixed
+    reservation, NOT by score — see the starvation-guard comment above.
 
     Returned tuple is (class_rank, urgency, weight_rank, recency). Larger sorts
     first under reverse=True.
@@ -149,15 +170,9 @@ def _sort_key(job, now):
         # arrival (older first). No aging needed — it should never wait.
         return (crank, 0, WEIGHT_RANK.get(job["weight"], 1), waited)
 
-    # throughput: weight, then arrival, plus aging backstop.
+    # throughput: weight, then arrival (FIFO within a tier).
     wrank = WEIGHT_RANK.get(job["weight"], 1)
-    if waited > _aging_grace_seconds:
-        aged = (waited - _aging_grace_seconds) * _aging_rate_per_sec
-    else:
-        aged = 0.0
-    # recency component: older arrival sorts first (larger waited). aging adds
-    # to it so a long-waiting low-weight job eventually outranks fresh high.
-    return (crank, 0, wrank, waited + aged)
+    return (crank, 0, wrank, waited)
 
 
 def _order_queued(jobs, now):
@@ -190,6 +205,7 @@ def _release_slot(node):
 # --- The loop ---------------------------------------------------------------
 
 async def _dispatch_loop():
+    global _last_low_reserve_at
     while _running:
         try:
             await asyncio.sleep(_interval_seconds)
@@ -197,6 +213,28 @@ async def _dispatch_loop():
             if not queued:
                 continue
             now = time.time()
+
+            # Starvation guard: once every _low_reserve_every_seconds, give the
+            # single oldest-queued "low" throughput job first claim on one freed
+            # slot, bypassing weight order entirely. Fixed cadence, not a score —
+            # this cannot inflate into out-ranking real demand, it can only ever
+            # claim this one bounded opportunity. See module docstring.
+            if now - _last_low_reserve_at >= _low_reserve_every_seconds:
+                low_jobs = [j for j in queued
+                            if j["job_class"] == "throughput" and j["weight"] == "low"]
+                if low_jobs:
+                    oldest_low = min(low_jobs, key=lambda j: j["submitted_at"])
+                    model = oldest_low.get("model") or _default_model
+                    node = _reserve_slot(model)
+                    if node is not None:
+                        if STORE.mark_running(oldest_low["id"], node.name):
+                            _inflight[oldest_low["id"]] = node
+                            asyncio.create_task(_run_job(oldest_low, node))
+                            _last_low_reserve_at = now
+                            queued = STORE.list_queued()  # drop the now-running job
+                        else:
+                            _release_slot(node)
+
             ordered = _order_queued(queued, now)
 
             for job in ordered:
@@ -288,6 +326,6 @@ def status():
         "running": _running,
         "inflight": len(_inflight),
         "interval_seconds": _interval_seconds,
-        "aging_grace_seconds": _aging_grace_seconds,
-        "aging_rate_per_sec": _aging_rate_per_sec,
+        "low_reserve_every_seconds": _low_reserve_every_seconds,
+        "last_low_reserve_at": _last_low_reserve_at,
     }

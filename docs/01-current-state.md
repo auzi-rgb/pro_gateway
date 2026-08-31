@@ -353,16 +353,35 @@ Mounted router. Auth reuses `main.py`'s `check_api_key` via injection.
   round-robin among ties) — so model-aware routing and health/circuit filtering
   come for free and stay consistent with the chat path.
 - Ordering: `interactive` first, then `deadline` by earliest deadline, then
-  `throughput` by weight then arrival, with an **aging backstop on `throughput`
-  only** (config: `aging_grace_seconds` default 30, `aging_rate_per_sec` default
-  10).
+  `throughput` by weight then arrival (FIFO within a tier).
+- **Starvation guard for `low`-weight throughput (fixed 2026-08-28; corrected
+  from an earlier score-based aging design).** The original aging formula
+  (`base_weight + (waited - grace) * rate`, folded into the same sort tuple as
+  weight) was live but never actually worked: Python tuple comparison checks
+  weight before the aged term, so aging could reorder jobs only *within* a
+  weight tier (where it was already redundant — `waited` alone is monotonic
+  with arrival) and could never promote `low` across a tier. Load-tester
+  validation caught this directly: under sustained contention, `low` jobs
+  didn't dispatch until higher-weight traffic fully drained, and a stuck one
+  had to be killed manually. The fix is NOT a recalibrated aging curve — a
+  prior attempt at that let `low` climb without bound until it eventually
+  out-ranked everything, which is worse. Instead: a fixed, bounded
+  reservation. Once every `low_reserve_every_seconds` (default 2.0s), the
+  single oldest-queued `low` throughput job gets first claim on one freed
+  slot, bypassing weight order entirely; every other tick runs strict weight
+  order untouched. There is no score to climb, so `low`'s share is
+  structurally capped and can never inflate into out-ranking real demand,
+  while still guaranteeing forward progress on a fixed cadence.
 - Each job runs as its own task, so many run concurrently across the fleet. Node
   errors (including Ollama's error-with-HTTP-200) and transport exceptions both
   mark the job failed and release the slot in a `finally`.
-- **Verified:** 24-case test (ordering `['inter','dead','crit','low']`,
+- **Verified (original build):** 24-case test (ordering `['inter','dead','crit','low']`,
   fleet-spread to peak 3/3/3/3 without exceeding slots, cancel race, error
   handling, no slot leak). Live end-to-end: a submitted job dispatched in ~47 ms,
-  ran on ai-node-03, result retrieved by poll.
+  ran on ai-node-03, result retrieved by poll. Note: that suite never exercised
+  a sustained-overload scenario, which is why the aging bug above shipped
+  undetected — a regression test for the starvation guard is still needed
+  (see `04-remaining-work.md`).
 
 ### 7.4 Config blocks (optional; defaults apply if absent)
 
@@ -373,8 +392,7 @@ Mounted router. Auth reuses `main.py`'s `check_api_key` via injection.
 },
 "dispatcher": {
   "interval_ms": 100,
-  "aging_grace_seconds": 30.0,
-  "aging_rate_per_sec": 10.0,
+  "low_reserve_every_seconds": 2.0,
   "node_http_timeout_seconds": 300.0
 }
 ```

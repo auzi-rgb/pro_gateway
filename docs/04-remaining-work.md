@@ -15,9 +15,13 @@ the history reads). Remaining work follows, ordered roughly by dependency.
   cancel, summary. Body-driven class/weight with validation. 40 tests passing +
   live submit/poll.
 - **2e (dispatch half). Class-based dispatcher** (`dispatcher.py`) — interactive
-  → deadline (earliest) → throughput (weight, arrival) with aging backstop on
-  throughput. Separate loop, shares the slot counter with the chat scheduler.
-  24 tests passing + live end-to-end job on real Ollama.
+  → deadline (earliest) → throughput (weight, arrival, FIFO within a tier).
+  Separate loop, shares the slot counter with the chat scheduler.
+  24 tests passing + live end-to-end job on real Ollama. **2026-08-28:** the
+  original score-based aging backstop was found broken by load-tester
+  validation (tuple ordering meant it could never actually promote `low`
+  across a weight tier) and replaced with a fixed, bounded reservation —
+  see `01-current-state.md` §7.3 for the full writeup.
 - **2d. Admission control** (`admission.py`) — LIVE. Rejects at arrival per class
   (interactive fails fast over its wait target; deadline rejects when unmeetable;
   throughput only at the global ceiling). Self-healing: throughput is MEASURED
@@ -55,6 +59,12 @@ undisturbed.
   affected chat traffic. Rebuild routing in the scheduler/dispatch path where
   traffic actually flows, or remove the dead config. A feature that silently does
   nothing is worse than none.
+- **Add a regression test for the `low`-weight starvation guard** in
+  `dispatcher.py` (2026-08-28 fix). The existing 24-case suite never exercised
+  sustained overload, which is exactly how the previous aging bug shipped
+  undetected. A test should assert `low` jobs still get dispatched (on the
+  `low_reserve_every_seconds` cadence) under continuous higher-weight arrivals,
+  and that they never out-rank a currently-queued higher-weight job.
 - **Separate test traffic from usage stats** — tag test clients or log them to a
   separate file.
 

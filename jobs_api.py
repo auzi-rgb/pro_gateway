@@ -228,10 +228,23 @@ async def submit_job(request: Request):
     model = payload.get("model")
 
     # Admission control: reject at arrival if it cannot be served acceptably.
+    # Checked BEFORE the row is created (not after) -- creating it first would
+    # mean the row counts against its own wait estimate in _admission_check,
+    # subtly inflating it (interacts with the class-rank fix in admission.py).
     reject = _admission_check(meta["job_class"], payload, meta["deadline_ms"])
     if reject:
+        job_id = STORE.create(
+            client=client,
+            job_class=meta["job_class"],
+            weight=meta["weight"],
+            payload=payload,
+            capability=meta["capability"],
+            model=model,
+            deadline_ms=meta["deadline_ms"],
+        )
+        STORE.mark_rejected(job_id, reject)
         log.info(f"jobs: REJECTED submit client={client} "
-                 f"class={meta['job_class']}: {reject}")
+                 f"class={meta['job_class']} id={job_id}: {reject}")
         raise HTTPException(status_code=503, detail=reject)
 
     job_id = STORE.create(
@@ -271,17 +284,9 @@ async def submit_batch(request: Request):
 
     meta = _extract_job_meta(body)
 
-    # Admission for a batch: checked once against the batch's declared class and
-    # the first item's payload as a representative shape/size. ANY rejection is
-    # honored and rejects the whole batch atomically -- exactly like a single job
-    # of that class would be rejected. (Batches are NOT guaranteed throughput-only
-    # -- class is caller-declared, same as a single job; see _extract_job_meta.)
-    reject = _admission_check(meta["job_class"], items[0], meta["deadline_ms"])
-    if reject:
-        log.info(f"jobs: REJECTED batch client={client} count={len(items)}: {reject}")
-        raise HTTPException(status_code=503, detail=reject)
-
     # Model can be stated at batch level or per item; batch level wins if given.
+    # Resolved before the admission check (not after) so it's available either
+    # way -- accepted or rejected, the batch now gets persisted either way.
     batch_model = body.get("model")
     for it in items:
         if not it:
@@ -293,6 +298,29 @@ async def submit_batch(request: Request):
     if model is None:
         models = {it.get("model") for it in items}
         model = models.pop() if len(models) == 1 else None
+
+    # Admission for a batch: checked once against the batch's declared class and
+    # the first item's payload as a representative shape/size. ANY rejection is
+    # honored and rejects the whole batch atomically -- exactly like a single job
+    # of that class would be rejected. (Batches are NOT guaranteed throughput-only
+    # -- class is caller-declared, same as a single job; see _extract_job_meta.)
+    # Checked BEFORE creation for the same self-counting reason as submit_job.
+    reject = _admission_check(meta["job_class"], items[0], meta["deadline_ms"])
+    if reject:
+        batch_id, ids = STORE.create_batch(
+            client=client,
+            job_class=meta["job_class"],
+            weight=meta["weight"],
+            payloads=items,
+            capability=meta["capability"],
+            model=model,
+            deadline_ms=meta["deadline_ms"],
+        )
+        for jid in ids:
+            STORE.mark_rejected(jid, reject)
+        log.info(f"jobs: REJECTED batch client={client} count={len(items)} "
+                 f"batch_id={batch_id}: {reject}")
+        raise HTTPException(status_code=503, detail=reject)
 
     batch_id, ids = STORE.create_batch(
         client=client,
