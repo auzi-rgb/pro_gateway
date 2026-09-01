@@ -1323,6 +1323,32 @@ async def admin_status(request: Request):
         "error_rate_pct": err_rate
     }
 
+@app.get("/admin/live-nodes")
+async def admin_live_nodes(request: Request):
+    """
+    Public (no require_auth), same precedent as /admin/status above -- this is
+    a reduced, safe-to-expose subset of /admin/nodes below (which needs the
+    admin JWT), built for external tools like the load tester that have no
+    business holding admin credentials but have a real use for live per-node
+    load (e.g. a live workload panel during a run). Deliberately omits
+    anything sensitive /admin/nodes exposes: no raw node URLs, no loaded-model
+    detail, no RAM/VRAM figures -- just enough to answer "how loaded is each
+    node right now".
+    """
+    await check_all_nodes(force=False)
+    return {
+        "nodes": [
+            {
+                "name": n.name,
+                "healthy": n.healthy,
+                "active_requests": n.active_requests,
+                "max_concurrent": n.max_concurrent,
+                "load_ratio": round(n.active_requests / n.max_concurrent, 2) if n.max_concurrent else 0,
+            }
+            for n in nodes
+        ]
+    }
+
 @app.get("/admin/nodes")
 async def admin_nodes(request: Request):
     require_auth(request)

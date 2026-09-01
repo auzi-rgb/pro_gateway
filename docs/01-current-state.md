@@ -407,3 +407,14 @@ await dispatcher.start()
 ```
 
 Backups from this work: `main.py.bak-jobsapi-*`, `main.py.bak-dispatcher-*`.
+
+---
+
+## 8. Public per-node live status (2026-09-01, load-tester roadmap phase 3)
+
+`GET /admin/live-nodes` — public (no `require_auth`), same precedent as `/admin/status`.
+Built so external tools like the load tester (which has no business holding the
+dashboard's admin JWT) can still get live per-node load — `name`, `healthy`,
+`active_requests`, `max_concurrent`, `load_ratio` — for a live workload view during a
+run. Deliberately a reduced field set vs. `/admin/nodes`: no raw node URLs, no
+loaded-model detail, no RAM/VRAM figures. `/admin/nodes` (admin-only) is unchanged.
