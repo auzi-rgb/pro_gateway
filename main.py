@@ -1075,6 +1075,22 @@ async def api_tags(request: Request):
                     merged.append({"name": model_name, "model": model_name})
     return {"models": merged}
 
+def _routing_headers(node, wait_secs: float) -> dict:
+    """What a caller needs to make sense of its own latency.
+
+    The queue wait is already measured on every request but has only ever been
+    written to the log, so a client could see how long a call took without
+    being able to tell how much of that was waiting for a slot versus the model
+    actually working. Returning it lets a caller separate the two directly
+    instead of inferring it from time-to-first-token, which also folds in
+    prompt processing.
+    """
+    return {
+        "x-node": node.name,
+        "x-queue-wait-ms": str(int(round(max(wait_secs, 0.0) * 1000))),
+    }
+
+
 @app.post("/api/chat")
 async def api_chat(request: Request):
     from starlette.responses import StreamingResponse as StarletteStreaming
@@ -1116,7 +1132,8 @@ async def api_chat(request: Request):
                 raise
             finally:
                 node.active_requests -= 1
-        return StarletteStreaming(generate(), media_type="application/x-ndjson", headers={"x-node": node.name})
+        return StarletteStreaming(generate(), media_type="application/x-ndjson",
+                                  headers=_routing_headers(node, wait_secs))
 
     else:
         body["stream"] = False
@@ -1135,7 +1152,7 @@ async def api_chat(request: Request):
             raise
         finally:
             node.active_requests -= 1
-        return JSONResponse(content=result, headers={"x-node": node.name})
+        return JSONResponse(content=result, headers=_routing_headers(node, wait_secs))
 
 @app.post("/api/embed")
 async def api_embed(request: Request):
