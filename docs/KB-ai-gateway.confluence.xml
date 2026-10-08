@@ -1,0 +1,259 @@
+<p>
+  <ac:structured-macro ac:name="info" ac:schema-version="1">
+    <ac:rich-text-body>
+      <p><strong>Audience:</strong> Georgetown IT staff and developers building applications that use the city's language models.</p>
+      <p><strong>System owner:</strong> Austin Madison &#160;&#183;&#160; <strong>Last reviewed:</strong> 2026-10-08</p>
+    </ac:rich-text-body>
+  </ac:structured-macro>
+</p>
+
+<ac:structured-macro ac:name="toc" ac:schema-version="1">
+  <ac:parameter ac:name="maxLevel">2</ac:parameter>
+  <ac:parameter ac:name="minLevel">2</ac:parameter>
+</ac:structured-macro>
+
+<h2>What it is</h2>
+
+<p>The AI Gateway is a single internal endpoint that city applications call to use the city's language models. It sits in front of four GPU appliances and decides which one handles each request.</p>
+
+<p>Applications do not talk to the GPU appliances directly. They talk to the gateway, and the gateway handles the rest.</p>
+
+<p><strong>Why it exists:</strong></p>
+
+<table>
+  <tbody>
+    <tr>
+      <th><p>Without a gateway</p></th>
+      <th><p>With the gateway</p></th>
+    </tr>
+    <tr>
+      <td><p>Every app hard-codes a server address</p></td>
+      <td><p>One address, forever</p></td>
+    </tr>
+    <tr>
+      <td><p>An appliance goes offline and apps break</p></td>
+      <td><p>Traffic moves to a healthy one automatically</p></td>
+    </tr>
+    <tr>
+      <td><p>One busy app slows everyone down</p></td>
+      <td><p>Work is prioritised by importance</p></td>
+    </tr>
+    <tr>
+      <td><p>No record of who used what</p></td>
+      <td><p>Every request is attributed to a key</p></td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>Where it runs</h2>
+
+<table>
+  <tbody>
+    <tr><th><p>Host</p></th><td><p><code>ai-app-server</code> (192.168.44.9)</p></td></tr>
+    <tr><th><p>Port</p></th><td><p>8000</p></td></tr>
+    <tr><th><p>Runs as</p></th><td><p>Docker Compose service <code>fastapi-gateway</code></p></td></tr>
+    <tr><th><p>Behind it</p></th><td><p>Four NVIDIA GB10 appliances running Ollama</p></td></tr>
+    <tr><th><p>Dashboard</p></th><td><p><code>/dashboard</code> (sign-in required)</p></td></tr>
+    <tr><th><p>Live view</p></th><td><p><code>/live</code> (no sign-in)</p></td></tr>
+  </tbody>
+</table>
+
+<p>All of it is on the internal network. Nothing is exposed to the internet, and no prompt or response leaves city infrastructure.</p>
+
+<h2>Getting access</h2>
+
+<p>Request an <strong>API key</strong> from the system owner. Keys are issued per application, not per person, so say which application it is for and roughly how it will be used.</p>
+
+<p>Each key carries two settings that decide how its traffic is handled. You do not set these per request &#8212; they are fixed on the key when it is issued.</p>
+
+<h3>Class &#8212; how the work is delivered</h3>
+
+<table>
+  <tbody>
+    <tr>
+      <th><p>Class</p></th>
+      <th><p>Use it for</p></th>
+      <th><p>How it behaves</p></th>
+    </tr>
+    <tr>
+      <td><p><code>interactive</code></p></td>
+      <td><p>A person is waiting on screen</p></td>
+      <td><p>Answered immediately, in arrival order</p></td>
+    </tr>
+    <tr>
+      <td><p><code>deadline</code></p></td>
+      <td><p>Work that must finish by a set time</p></td>
+      <td><p>Queued, soonest deadline served first</p></td>
+    </tr>
+    <tr>
+      <td><p><code>throughput</code></p></td>
+      <td><p>Bulk work nobody is waiting on</p></td>
+      <td><p>Queued, served by weight</p></td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>Weight &#8212; who goes first when there is a queue</h3>
+
+<p><code>critical</code> &#160;&#183;&#160; <code>high</code> &#160;&#183;&#160; <code>normal</code> &#160;&#183;&#160; <code>low</code></p>
+
+<ac:structured-macro ac:name="note" ac:schema-version="1">
+  <ac:rich-text-body>
+    <p><strong>Weight only affects <code>throughput</code> work.</strong> Interactive requests are served in the order they arrive and deadline requests by whichever is due soonest, so a <code>critical</code> key gets no advantage in those classes. This surprises people, so it is worth repeating: weight is a tiebreaker for bulk work, not a fast pass.</p>
+  </ac:rich-text-body>
+</ac:structured-macro>
+
+<p>Low-weight work cannot be starved indefinitely. Roughly every two seconds the longest-waiting low-weight job is given first claim on the next free slot, regardless of what else is queued.</p>
+
+<h2>Calling it</h2>
+
+<p>Authenticate with an <code>Authorization: Bearer &lt;your-key&gt;</code> header on every request. No other header format is accepted.</p>
+
+<h3>Interactive &#8212; a person is waiting</h3>
+
+<p><code>POST /api/chat</code></p>
+
+<ac:structured-macro ac:name="code" ac:schema-version="1">
+  <ac:parameter ac:name="language">bash</ac:parameter>
+  <ac:plain-text-body><![CDATA[curl -X POST http://192.168.44.9:8000/api/chat \
+  -H "Authorization: Bearer YOUR_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+        "model": "gemma4:12b",
+        "messages": [{"role": "user", "content": "Summarise this permit application."}],
+        "stream": true
+      }']]></ac:plain-text-body>
+</ac:structured-macro>
+
+<p>Set <code>"stream": true</code> to receive the answer token by token as it is generated, which is what makes a chat interface feel responsive. With <code>false</code> you wait for the whole answer.</p>
+
+<p>Two response headers are worth reading:</p>
+
+<ul>
+  <li><p><code>x-node</code> &#8212; which appliance served it</p></li>
+  <li><p><code>x-queue-wait-ms</code> &#8212; how long it waited for a free slot before any work began</p></li>
+</ul>
+
+<p>If a request took 12 seconds and <code>x-queue-wait-ms</code> says 9000, the system was busy, not slow. That distinction matters when troubleshooting.</p>
+
+<h3>Background work &#8212; nobody is waiting</h3>
+
+<p>Submit the job, get an id back immediately, poll for the result.</p>
+
+<ac:structured-macro ac:name="code" ac:schema-version="1">
+  <ac:parameter ac:name="language">bash</ac:parameter>
+  <ac:plain-text-body><![CDATA[# submit
+curl -X POST http://192.168.44.9:8000/api/jobs \
+  -H "Authorization: Bearer YOUR_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"gemma4:12b",
+       "messages":[{"role":"user","content":"Classify these 400 records."}],
+       "class":"throughput"}'
+# -> {"id": "abc123"}
+
+# poll
+curl http://192.168.44.9:8000/api/jobs/abc123 -H "Authorization: Bearer YOUR_KEY"]]></ac:plain-text-body>
+</ac:structured-macro>
+
+<p>The job record includes <code>submitted_at</code>, <code>started_at</code> and <code>finished_at</code>, so you can see how much of the elapsed time was queueing.</p>
+
+<p><code>POST /api/jobs/batch</code> submits several at once. <code>DELETE /api/jobs/{id}</code> cancels one that has not started.</p>
+
+<h3>OpenAI-compatible</h3>
+
+<p><code>POST /v1/chat/completions</code> and <code>GET /v1/models</code> are available for tools that expect the OpenAI format. Useful for off-the-shelf software that cannot be changed.</p>
+
+<h3>Other endpoints</h3>
+
+<table>
+  <tbody>
+    <tr><th><p>Endpoint</p></th><th><p>Returns</p></th></tr>
+    <tr><td><p><code>GET /api/tags</code></p></td><td><p>Models available across the fleet</p></td></tr>
+    <tr><td><p><code>GET /api/ps</code></p></td><td><p>What is currently loaded, and memory in use</p></td></tr>
+    <tr><td><p><code>POST /api/embed</code></p></td><td><p>Vector embeddings</p></td></tr>
+    <tr><td><p><code>GET /health</code></p></td><td><p>Liveness check, no authentication</p></td></tr>
+    <tr><td><p><code>GET /admin/status</code></p></td><td><p>Fleet summary, no authentication</p></td></tr>
+  </tbody>
+</table>
+
+<h2>Reading the responses</h2>
+
+<h3>200 &#8212; fine</h3>
+
+<h3>401 / 403 &#8212; your key</h3>
+
+<p>401 means no key was sent, 403 means the key was not recognised or has been revoked. Check the <code>Authorization</code> header is present and spelled <code>Bearer </code>.</p>
+
+<h3>503 &#8212; the gateway turned the request away</h3>
+
+<ac:structured-macro ac:name="info" ac:schema-version="1">
+  <ac:rich-text-body>
+    <p><strong>This is not a fault.</strong> Admission control refuses work it does not believe it can complete in reasonable time, rather than accepting it and being slow for everyone.</p>
+  </ac:rich-text-body>
+</ac:structured-macro>
+
+<p>The response body explains why, for example:</p>
+
+<ac:structured-macro ac:name="code" ac:schema-version="1">
+  <ac:parameter ac:name="language">json</ac:parameter>
+  <ac:plain-text-body><![CDATA[{"detail": "estimated wait 3.2s exceeds interactive target 2.0s"}]]></ac:plain-text-body>
+</ac:structured-macro>
+
+<p><strong>What to do:</strong> retry after a short delay, with backoff. If it happens often, the work probably belongs in the <code>throughput</code> class as a background job rather than an interactive request. Talk to the system owner about re-issuing the key.</p>
+
+<h3>500 &#8212; something failed downstream</h3>
+
+<p>Report it with the time and the <code>x-node</code> header value if you have it.</p>
+
+<h2>Common questions</h2>
+
+<p><strong>Which model should I use?</strong><br/>
+The fleet runs several. Each one has a report card &#8212; accuracy by category, speed, memory use &#8212; produced by Crucible, the companion load tester. Ask the system owner for the current one rather than guessing from the model name.</p>
+
+<p><strong>Why is my request slow?</strong><br/>
+Check <code>x-queue-wait-ms</code>. If it is small, the model is simply generating a long answer, and shortening your prompt or lowering the response length will help. If it is large, the fleet is busy and your work may belong in a lower-priority class.</p>
+
+<p><strong>Why did I get an answer with no text in it?</strong><br/>
+Some models reason before answering, and that reasoning counts against the response length limit. Too small a limit and the model spends it all thinking and returns nothing. Raise the limit, or ask the system owner whether the model supports answering directly.</p>
+
+<p><strong>Can I pick which appliance serves me?</strong><br/>
+No, and you should not want to. The gateway picks the least loaded healthy one.</p>
+
+<p><strong>Is my data sent anywhere?</strong><br/>
+No. Prompts and responses stay on city hardware.</p>
+
+<h2>For whoever supports this</h2>
+
+<p><strong>Restart</strong> &#8212; use <code>--force-recreate</code>, not <code>restart</code>, or environment changes are not picked up:</p>
+
+<ac:structured-macro ac:name="code" ac:schema-version="1">
+  <ac:parameter ac:name="language">bash</ac:parameter>
+  <ac:plain-text-body><![CDATA[cd ~/ai-stack && docker compose up -d --force-recreate fastapi-gateway]]></ac:plain-text-body>
+</ac:structured-macro>
+
+<p><strong>Check syntax before restarting.</strong> The gateway directory is not writable by a normal user, so compile to <code>/tmp</code>:</p>
+
+<ac:structured-macro ac:name="code" ac:schema-version="1">
+  <ac:parameter ac:name="language">bash</ac:parameter>
+  <ac:plain-text-body><![CDATA[python3 -c "import py_compile; py_compile.compile('/home/george/ai-stack/gateway/main.py', cfile='/tmp/gwcheck.pyc', doraise=True); print('COMPILE OK')"]]></ac:plain-text-body>
+</ac:structured-macro>
+
+<p><strong>Health checks</strong> run every 30 seconds against each appliance's <code>/api/tags</code>. A failing appliance is marked unhealthy and taken out of rotation automatically, and an alert email is sent after a configured number of consecutive failures. It is returned to rotation when it recovers.</p>
+
+<p><strong>Keys</strong> are managed from the dashboard, or through <code>/admin/config/keys</code>.</p>
+
+<ac:structured-macro ac:name="warning" ac:schema-version="1">
+  <ac:parameter ac:name="title">The key cutover is a one-way event</ac:parameter>
+  <ac:rich-text-body>
+    <p>While the key store is empty, the gateway falls back to the older environment-variable key and logs a CRITICAL warning. The moment the first key is created in the store, that fallback stops for <strong>every client at once</strong>. Plan it; do not discover it. The same thing happens in reverse if the last key is ever revoked.</p>
+  </ac:rich-text-body>
+</ac:structured-macro>
+
+<p><strong>Logs:</strong> <code>docker compose logs -f fastapi-gateway</code></p>
+
+<h2>Related</h2>
+
+<ul>
+  <li><p><strong>Crucible</strong> &#8212; the load tester and model benchmark that measures this gateway. Separate article.</p></li>
+  <li><p>Design documents live in the <code>pro_gateway</code> repository under <code>docs/</code>.</p></li>
+</ul>
